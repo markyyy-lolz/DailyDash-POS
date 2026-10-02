@@ -476,6 +476,7 @@ private fun ModernPosScreen(
     var showCart by remember { mutableStateOf(false) }
     var showCheckout by remember { mutableStateOf(false) }
     var showOrders by remember { mutableStateOf(false) }
+    var completedSale by remember { mutableStateOf<CompletedSale?>(null) }
 
     fun refresh() {
         syncing = true
@@ -716,12 +717,13 @@ private fun ModernPosScreen(
             cart = cart,
             staffToken = session.token,
             onSuccess = { result ->
-                store.saveOrder(result, cart.sumOf { it.quantity })
+                val soldLines = cart.map { it.copy() }
+                store.saveOrder(result, soldLines.sumOf { it.quantity })
+                completedSale = CompletedSale(result, soldLines, session.member)
                 cart = emptyList()
                 showCheckout = false
                 online = true
                 refresh()
-                scope.launch { snackbar.showSnackbar(result.orderNo + " completed • " + peso(result.total)) }
             },
             onFailure = { message ->
                 if (message.contains("session", ignoreCase = true)) {
@@ -737,6 +739,13 @@ private fun ModernPosScreen(
 
     if (showOrders) {
         LocalOrdersDialog(store.orders(), onDismiss = { showOrders = false })
+    }
+
+    completedSale?.let { sale ->
+        TransactionSuccessDialog(
+            sale = sale,
+            onClose = { completedSale = null }
+        )
     }
 }
 
@@ -949,4 +958,341 @@ private fun LocalOrdersDialog(orders: List<OrderRecord>, onDismiss: () -> Unit) 
         },
         confirmButton = { Button(onClick = onDismiss) { Text("Close") } }
     )
+}
+
+
+@Composable
+private fun TransactionSuccessDialog(
+    sale: CompletedSale,
+    onClose: () -> Unit
+) {
+    var tab by remember { mutableIntStateOf(0) }
+    val result = sale.result
+    val totalItems = sale.lines.sumOf { it.quantity }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color.White,
+        title = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(62.dp)
+                        .background(Color(0xFFE8F8EF), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF16A05D),
+                        modifier = Modifier.size(38.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Transaction Successful!",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF102A56)
+                )
+                Text(
+                    result.orderNo + "  •  " + peso(result.total),
+                    color = Color(0xFF6B7A90),
+                    fontSize = 13.sp
+                )
+            }
+        },
+        text = {
+            Column {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFF0F5FB),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(Modifier.padding(4.dp)) {
+                        ReceiptTab(
+                            text = "Receipt",
+                            icon = Icons.Default.ReceiptLong,
+                            selected = tab == 0,
+                            modifier = Modifier.weight(1f)
+                        ) { tab = 0 }
+                        ReceiptTab(
+                            text = "Order Slip",
+                            icon = Icons.Default.Description,
+                            selected = tab == 1,
+                            modifier = Modifier.weight(1f)
+                        ) { tab = 1 }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 470.dp),
+                    color = Color(0xFFFAFBFD),
+                    shape = RoundedCornerShape(18.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4EAF2))
+                ) {
+                    if (tab == 0) {
+                        ReceiptContent(sale)
+                    } else {
+                        OrderSlipContent(sale)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFEAF3FF),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = BrandBlue, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            totalItems.toString() + " item(s) recorded • Paid via " + result.tender,
+                            color = Color(0xFF355477),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(15.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+            ) {
+                Icon(Icons.Default.AddShoppingCart, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("New Order", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReceiptTab(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = if (selected) Color.White else Color.Transparent,
+        shape = RoundedCornerShape(13.dp),
+        shadowElevation = if (selected) 2.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) BrandBlue else Color(0xFF718096),
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text,
+                color = if (selected) BrandBlue else Color(0xFF718096),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReceiptContent(sale: CompletedSale) {
+    val result = sale.result
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp)
+    ) {
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("DAILY DASH", fontWeight = FontWeight.Black, fontSize = 20.sp, color = Color(0xFF102A56))
+            Text("Official POS Receipt", color = Color(0xFF718096), fontSize = 11.sp)
+            Spacer(Modifier.height(10.dp))
+            Text(result.orderNo, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            if (result.createdAt.isNotBlank()) {
+                Text(result.createdAt.replace("T", " ").take(19), color = Color(0xFF718096), fontSize = 11.sp)
+            }
+        }
+
+        ReceiptDivider()
+
+        ReceiptInfoRow("Cashier", sale.staff.displayName)
+        ReceiptInfoRow("Payment", result.tender)
+
+        ReceiptDivider()
+
+        sale.lines.forEach { line ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    line.quantity.toString() + "×",
+                    modifier = Modifier.width(28.dp),
+                    fontWeight = FontWeight.Bold
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(line.product.name, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    if (line.upsized) {
+                        Text("Upsized", color = BrandBlue, fontSize = 10.sp)
+                    }
+                    Text(peso(line.unitPrice) + " each", color = Color(0xFF8490A2), fontSize = 10.sp)
+                }
+                Text(peso(line.lineTotal), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+
+        ReceiptDivider()
+
+        ReceiptInfoRow("TOTAL", peso(result.total), strong = true)
+        ReceiptInfoRow("Cash received", peso(result.cashReceived))
+        ReceiptInfoRow("Change", peso(result.changeAmount), strong = result.changeAmount > 0)
+
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Thank you for choosing DailyDash!",
+            modifier = Modifier.fillMaxWidth(),
+            color = BrandBlue,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun OrderSlipContent(sale: CompletedSale) {
+    val result = sale.result
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("ORDER SLIP", fontWeight = FontWeight.Black, fontSize = 22.sp, color = Color(0xFF102A56))
+                Text("For preparation / counter", color = Color(0xFF718096), fontSize = 11.sp)
+            }
+            Surface(
+                color = Color(0xFFE8F8EF),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    "PAID",
+                    color = Color(0xFF128651),
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text(result.orderNo, fontWeight = FontWeight.Black, fontSize = 18.sp)
+        Text("Cashier: " + sale.staff.displayName, color = Color(0xFF718096), fontSize = 11.sp)
+        Text("Tender: " + result.tender, color = Color(0xFF718096), fontSize = 11.sp)
+
+        ReceiptDivider()
+
+        sale.lines.forEachIndexed { index, line ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Surface(
+                    color = BrandBlue,
+                    shape = RoundedCornerShape(9.dp)
+                ) {
+                    Text(
+                        line.quantity.toString() + "×",
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        line.product.name,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        color = Color(0xFF20395E)
+                    )
+                    Text(line.product.category, color = Color(0xFF718096), fontSize = 10.sp)
+                    if (line.upsized) {
+                        Text("• UPSIZED", color = Color(0xFFD77A00), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            if (index != sale.lines.lastIndex) {
+                HorizontalDivider(color = Color(0xFFE7EBF1))
+            }
+        }
+
+        ReceiptDivider()
+        Text(
+            sale.lines.sumOf { it.quantity }.toString() + " total item(s)",
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF4E6079)
+        )
+    }
+}
+
+@Composable
+private fun ReceiptDivider() {
+    Spacer(Modifier.height(10.dp))
+    HorizontalDivider(color = Color(0xFFDCE3ED))
+    Spacer(Modifier.height(10.dp))
+}
+
+@Composable
+private fun ReceiptInfoRow(label: String, value: String, strong: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            color = if (strong) Color(0xFF102A56) else Color(0xFF6F7C90),
+            fontSize = if (strong) 14.sp else 11.sp,
+            fontWeight = if (strong) FontWeight.Black else FontWeight.Normal
+        )
+        Text(
+            value,
+            color = Color(0xFF102A56),
+            fontSize = if (strong) 16.sp else 11.sp,
+            fontWeight = if (strong) FontWeight.Black else FontWeight.SemiBold
+        )
+    }
 }
