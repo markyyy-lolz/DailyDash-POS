@@ -434,6 +434,70 @@ function exportReport(){
   toast('Report CSV exported');
 }
 
+
+async function loadStaff(){
+  const d=await admin('staff');
+  state.staff=d.staff||[];
+  renderStaff();
+}
+
+function staffInitials(name){
+  return String(name||'S').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join('');
+}
+
+function renderStaff(){
+  const active=state.staff.filter(s=>s.is_active);
+  $('#activeStaffCount').textContent=active.length;
+  $('#managerStaffCount').textContent=active.filter(s=>['manager','admin'].includes(s.role)).length;
+  $('#cashierStaffCount').textContent=active.filter(s=>s.role==='cashier').length;
+
+  $('#staffGrid').innerHTML=state.staff.length?state.staff.map(s=>{
+    const avatar=s.avatar_url
+      ? '<img class="staff-avatar" src="'+escapeHtml(s.avatar_url)+'" alt="">'
+      : '<div class="staff-avatar">'+escapeHtml(staffInitials(s.display_name))+'</div>';
+    const login=s.last_login_at?fmt(s.last_login_at):'Never';
+    return '<article class="staff-card '+(s.is_active?'':'off')+'" data-staff-id="'+s.id+'">'+
+      '<div class="staff-card-head">'+avatar+'<div><h3>'+escapeHtml(s.display_name)+'</h3><small>'+escapeHtml(s.staff_code)+(s.username?' • @'+escapeHtml(s.username):'')+'</small></div></div>'+
+      '<span class="staff-role">'+escapeHtml(s.role)+'</span>'+
+      '<div class="staff-meta"><div><span>Status</span><b>'+(s.is_active?'Active':'Disabled')+'</b></div><div><span>Last login</span><b>'+escapeHtml(login)+'</b></div></div>'+
+      '<div class="staff-card-actions"><button class="secondary edit-staff">Edit</button><button class="'+(s.is_active?'tiny danger':'secondary')+' toggle-staff">'+(s.is_active?'Disable':'Enable')+'</button></div>'+
+    '</article>';
+  }).join(''):'<div class="empty">No staff accounts yet.</div>';
+
+  $('.edit-staff').forEach(btn=>btn.onclick=()=>{
+    const id=btn.closest('[data-staff-id]').dataset.staffId;
+    openStaffModal(state.staff.find(s=>s.id===id));
+  });
+  $('.toggle-staff').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.closest('[data-staff-id]').dataset.staffId;
+    const member=state.staff.find(s=>s.id===id);
+    if(!member)return;
+    try{
+      await admin('staff_toggle',{id,is_active:!member.is_active});
+      toast(member.is_active?'Staff access disabled':'Staff access enabled');
+      await loadStaff();
+    }catch(e){toast(e.message,true)}
+  });
+}
+
+function openStaffModal(member=null){
+  $('#staffModalTitle').textContent=member?'Edit Staff':'Add Staff';
+  $('#staffId').value=member?.id||'';
+  $('#staffCode').value=member?.staff_code||'';
+  $('#staffName').value=member?.display_name||'';
+  $('#staffUsername').value=member?.username||'';
+  $('#staffRole').value=member?.role||'cashier';
+  $('#staffPin').value='';
+  $('#staffPassword').value='';
+  $('#staffAvatar').value=member?.avatar_url||'';
+  $('#staffActive').checked=member?!!member.is_active:true;
+  $('#staffModal').classList.add('show');
+}
+
+function closeStaffModal(){
+  $('#staffModal').classList.remove('show');
+}
+
 $('#todayLabel').textContent=new Intl.DateTimeFormat('en-PH',{
   dateStyle:'full',timeZone:'Asia/Manila'
 }).format(new Date());
@@ -442,7 +506,42 @@ setReportRange(7);
 
 $$('.nav').forEach(n=>n.onclick=()=>showView(n.dataset.view));
 $$('[data-jump]').forEach(n=>n.onclick=()=>showView(n.dataset.jump));
-$('#refreshBtn').onclick=refreshCurrent;
+
+$('#addStaffBtn').onclick=()=>openStaffModal();
+$('#staffModalClose').onclick=closeStaffModal;
+$('#staffCancel').onclick=closeStaffModal;
+$('#staffModal').onclick=e=>{if(e.target.id==='staffModal')closeStaffModal()};
+$('#staffPin').oninput=e=>e.target.value=e.target.value.replace(/\D/g,'').slice(0,6);
+$('#staffForm').onsubmit=async e=>{
+  e.preventDefault();
+  const id=$('#staffId').value||null;
+  const pin=$('#staffPin').value;
+  const password=$('#staffPassword').value;
+  if(!id&&!pin&&!password){toast('New staff needs a PIN or password.',true);return}
+  if(pin&&pin.length<4){toast('PIN must be 4 to 6 digits.',true);return}
+  if(password&&password.length<6){toast('Password must be at least 6 characters.',true);return}
+
+  const btn=$('#staffSaveBtn');
+  btn.disabled=true;btn.textContent='Saving...';
+  try{
+    await admin('staff_save',{
+      id,
+      staff_code:$('#staffCode').value.trim(),
+      display_name:$('#staffName').value.trim(),
+      username:$('#staffUsername').value.trim()||null,
+      role:$('#staffRole').value,
+      staff_pin:pin||null,
+      password:password||null,
+      avatar_url:$('#staffAvatar').value.trim()||null,
+      is_active:$('#staffActive').checked
+    });
+    closeStaffModal();
+    toast(id?'Staff updated':'Staff added');
+    await loadStaff();
+  }catch(err){toast(err.message,true)}
+  finally{btn.disabled=false;btn.textContent='Save Staff'}
+};
+\n$('#refreshBtn').onclick=refreshCurrent;
 $('#reloadOrders').onclick=loadOrders;
 $('#logoutBtn').onclick=logout;
 $('#menuSearch').oninput=renderProducts;
