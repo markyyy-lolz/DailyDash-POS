@@ -12,8 +12,8 @@ android {
         applicationId = "com.dailydash.pos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     buildFeatures { compose = true }
@@ -31,6 +31,7 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.activity:activity-compose:1.10.0")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
