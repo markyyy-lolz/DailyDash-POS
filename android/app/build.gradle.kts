@@ -36,6 +36,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")\n    implementation("io.coil-kt.coil3:coil-compose:3.0.4")\n    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
