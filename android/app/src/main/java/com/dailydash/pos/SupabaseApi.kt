@@ -18,8 +18,10 @@ class SupabaseApi {
 
     suspend fun loadProducts(): Result<List<Product>> = withContext(Dispatchers.IO) {
         runCatching {
-            val endpoint = "$SUPABASE_URL/rest/v1/dailydash_products?select=id,name,category,price,allow_upsize,upsize_price,available,sort_order&order=sort_order.asc"
-            val connection = open(endpoint, "GET")
+            val endpoint = "$SUPABASE_URL/rest/v1/rpc/dailydash_get_pos_products"
+            val connection = open(endpoint, "POST")
+            connection.doOutput = true
+            connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
             val body = readResponse(connection)
             if (connection.responseCode !in 200..299) error("Cloud menu error ${connection.responseCode}: $body")
             val arr = JSONArray(body)
