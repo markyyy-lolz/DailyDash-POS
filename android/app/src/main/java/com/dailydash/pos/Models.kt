@@ -8,17 +8,27 @@ data class Product(
     val allowUpsize: Boolean = false,
     val upsizePrice: Int = 10,
     val available: Boolean = true,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    val imageUrl: String? = null
 )
 
-data class CartLine(
-    val product: Product,
-    val quantity: Int = 1,
-    val upsized: Boolean = false
-) {
+data class CartLine(val product: Product, val quantity: Int = 1, val upsized: Boolean = false) {
     val unitPrice: Int get() = product.price + if (upsized) product.upsizePrice else 0
     val lineTotal: Int get() = unitPrice * quantity
 }
+
+data class StaffMember(
+    val id: String,
+    val staffCode: String,
+    val displayName: String,
+    val role: String,
+    val avatarUrl: String? = null
+)
+
+data class StaffSession(
+    val token: String,
+    val member: StaffMember
+)
 
 data class CloudOrderResult(
     val remoteId: String,
