@@ -3,6 +3,8 @@ package com.dailydash.pos
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -520,9 +522,7 @@ private fun ModernPosScreen(
                     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
                         NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
                         NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
-                        NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
-                        NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
-                        NavigationBarItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Print, null) }, label = { Text("Printer") })
+                        NavigationBarItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
                     }
                 }
             }
@@ -546,9 +546,7 @@ private fun ModernPosScreen(
                     ) {
                         NavigationRailItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
                         NavigationRailItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
-                        NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
-                        NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
-                        NavigationRailItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Print, null) }, label = { Text("Printer") })
+                        NavigationRailItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
                     }
                 }
 
@@ -766,7 +764,6 @@ private fun ModernPosScreen(
             onClose = { completedSale = null }
         )
     }
-}
 
     if (showPrinterSettings) {
         PrinterSettingsDialog(
@@ -774,6 +771,7 @@ private fun ModernPosScreen(
             onDismiss = { showPrinterSettings = false }
         )
     }
+}
 
 @Composable
 private fun ModernProductCard(product: Product, onAdd: () -> Unit) {
@@ -1097,6 +1095,62 @@ private fun TransactionSuccessDialog(
                         )
                     }
                 }
+
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            printing = true
+                            printStatus = "Printing receipt..."
+                            scope.launch {
+                                printerManager.printReceipt(sale)
+                                    .onSuccess { printStatus = "Receipt printed." }
+                                    .onFailure { printStatus = it.message ?: "Receipt print failed." }
+                                printing = false
+                            }
+                        },
+                        enabled = !printing,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
+                        Icon(Icons.Default.Print, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Print Receipt")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            printing = true
+                            printStatus = "Printing order slip..."
+                            scope.launch {
+                                printerManager.printOrderSlip(sale)
+                                    .onSuccess { printStatus = "Order slip printed." }
+                                    .onFailure { printStatus = it.message ?: "Order slip print failed." }
+                                printing = false
+                            }
+                        },
+                        enabled = !printing,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
+                        Icon(Icons.Default.Print, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Print Slip")
+                    }
+                }
+
+                printStatus?.let {
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        it,
+                        color = if (it.contains("printed", ignoreCase = true)) Color(0xFF128651) else Color(0xFF64748B),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         },
         confirmButton = {
@@ -1324,5 +1378,495 @@ private fun ReceiptInfoRow(label: String, value: String, strong: Boolean = false
             fontSize = if (strong) 16.sp else 11.sp,
             fontWeight = if (strong) FontWeight.Black else FontWeight.SemiBold
         )
+    }
+}
+
+
+@Composable
+private fun PrinterSettingsDialog(
+    manager: PrinterManager,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var settings by remember { mutableStateOf(manager.loadSettings()) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var testing by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        refreshKey++
+        status = if (granted) {
+            "Bluetooth permission granted."
+        } else {
+            "Bluetooth permission is required to print."
+        }
+    }
+
+    val paired = remember(refreshKey) {
+        manager.pairedBluetoothPrinters()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color.White,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            Color(0xFFE9F3FF),
+                            RoundedCornerShape(15.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = BrandBlue
+                    )
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        "POS Settings",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF102A56)
+                    )
+                    Text(
+                        "Receipt printer & transaction behavior",
+                        fontSize = 11.sp,
+                        color = Color(0xFF718096)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 580.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    color = Color(0xFFF3F8FF),
+                    shape = RoundedCornerShape(18.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Color(0xFFDCE9F8)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Print,
+                                null,
+                                tint = BrandBlue
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "VOZY P50 58mm",
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF20395E)
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Surface(
+                                color = Color(0xFFE8F8EF),
+                                shape = RoundedCornerShape(999.dp)
+                            ) {
+                                Text(
+                                    "ESC/POS",
+                                    color = Color(0xFF128651),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(
+                                        horizontal = 9.dp,
+                                        vertical = 5.dp
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Text(
+                            "Bluetooth printing preset for the 58mm thermal printer. Pair the printer with Android first, then select it below.",
+                            color = Color(0xFF67758A),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+
+                Text(
+                    "Bluetooth printer",
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF243B64)
+                )
+
+                if (!manager.hasBluetoothPermission()) {
+                    Button(
+                        onClick = {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                permissionLauncher.launch(
+                                    android.Manifest.permission.BLUETOOTH_CONNECT
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BrandBlue
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Default.Bluetooth, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Allow Bluetooth Printer Access")
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_BLUETOOTH_SETTINGS
+                                        )
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(13.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Bluetooth,
+                                null,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Pair Device")
+                        }
+
+                        OutlinedButton(
+                            onClick = { refreshKey++ },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(13.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                null,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Refresh")
+                        }
+                    }
+
+                    if (paired.isEmpty()) {
+                        Surface(
+                            color = Color(0xFFFFF7E8),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                "No paired printer found. Turn on the VOZY P50, pair it in Android Bluetooth settings, then tap Refresh.",
+                                modifier = Modifier.padding(13.dp),
+                                color = Color(0xFF8B5B00),
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                    } else {
+                        paired.forEach { device ->
+                            val selected =
+                                settings.bluetoothAddress == device.id
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        settings = settings.copy(
+                                            bluetoothAddress = device.id
+                                        )
+                                    },
+                                color = if (selected) {
+                                    Color(0xFFEAF3FF)
+                                } else {
+                                    Color(0xFFFAFBFD)
+                                },
+                                shape = RoundedCornerShape(15.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selected) 2.dp else 1.dp,
+                                    if (selected) BrandBlue
+                                    else Color(0xFFE3E9F1)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(13.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(
+                                                if (selected) BrandBlue
+                                                else Color(0xFFE9EEF5),
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Print,
+                                            null,
+                                            tint = if (selected) Color.White
+                                            else Color(0xFF627087),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(10.dp))
+
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            device.name,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF223A5F)
+                                        )
+                                        Text(
+                                            device.subtitle,
+                                            color = Color(0xFF7A8798),
+                                            fontSize = 10.sp
+                                        )
+                                    }
+
+                                    if (selected) {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            null,
+                                            tint = BrandBlue
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFE6EBF2))
+
+                Text(
+                    "After every successful sale",
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF243B64)
+                )
+
+                SettingsSwitchRow(
+                    title = "Print customer receipt",
+                    subtitle = "Automatically print the sales receipt.",
+                    checked = settings.autoPrintReceipt,
+                    onCheckedChange = {
+                        settings = settings.copy(
+                            autoPrintReceipt = it
+                        )
+                    }
+                )
+
+                SettingsSwitchRow(
+                    title = "Print order slip",
+                    subtitle = "Automatically print a second slip for preparation.",
+                    checked = settings.autoPrintOrderSlip,
+                    onCheckedChange = {
+                        settings = settings.copy(
+                            autoPrintOrderSlip = it
+                        )
+                    }
+                )
+
+                Surface(
+                    color = Color(0xFFF8FAFD),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Straighten,
+                            null,
+                            tint = BrandBlue
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Paper width",
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "58mm / 32-character receipt layout",
+                                color = Color(0xFF718096),
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            "58mm",
+                            color = BrandBlue,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        manager.saveSettings(settings)
+                        testing = true
+                        status = "Sending test receipt..."
+                        scope.launch {
+                            manager.testPrint(settings)
+                                .onSuccess {
+                                    status =
+                                        "Test receipt printed successfully."
+                                }
+                                .onFailure {
+                                    status =
+                                        it.message ?: "Printer test failed."
+                                }
+                            testing = false
+                        }
+                    },
+                    enabled = !testing &&
+                        settings.bluetoothAddress.isNotBlank() &&
+                        manager.hasBluetoothPermission(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF102A56)
+                    )
+                ) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (testing) "Testing Printer..."
+                        else "Save & Test Print",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                status?.let {
+                    Surface(
+                        color = if (
+                            it.contains(
+                                "success",
+                                ignoreCase = true
+                            )
+                        ) Color(0xFFE8F8EF)
+                        else Color(0xFFF4F6F9),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            it,
+                            modifier = Modifier.padding(11.dp),
+                            color = if (
+                                it.contains(
+                                    "success",
+                                    ignoreCase = true
+                                )
+                            ) Color(0xFF128651)
+                            else Color(0xFF5D6B80),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    manager.saveSettings(settings)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BrandBlue
+                )
+            ) {
+                Text(
+                    "Save Settings",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        color = Color(0xFFFAFBFD),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Color(0xFFE6EBF2)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    title,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF263D60)
+                )
+                Text(
+                    subtitle,
+                    color = Color(0xFF758296),
+                    fontSize = 11.sp
+                )
+            }
+
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
     }
 }
