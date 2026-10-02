@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -466,6 +467,8 @@ private fun ModernPosScreen(
 ) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val printerManager = remember(context) { PrinterManager(context) }
 
     var products by remember { mutableStateOf(MenuSeed.products) }
     var selectedCategory by remember { mutableStateOf("All") }
@@ -476,6 +479,7 @@ private fun ModernPosScreen(
     var showCart by remember { mutableStateOf(false) }
     var showCheckout by remember { mutableStateOf(false) }
     var showOrders by remember { mutableStateOf(false) }
+    var showPrinterSettings by remember { mutableStateOf(false) }
     var completedSale by remember { mutableStateOf<CompletedSale?>(null) }
 
     fun refresh() {
@@ -518,6 +522,7 @@ private fun ModernPosScreen(
                         NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
                         NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
                         NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
+                        NavigationBarItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Print, null) }, label = { Text("Printer") })
                     }
                 }
             }
@@ -543,6 +548,7 @@ private fun ModernPosScreen(
                         NavigationRailItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
                         NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
                         NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
+                        NavigationRailItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Print, null) }, label = { Text("Printer") })
                     }
                 }
 
@@ -564,6 +570,9 @@ private fun ModernPosScreen(
                                 Spacer(Modifier.weight(1f))
                                 IconButton(onClick = { refresh() }) {
                                     Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, if (online) "Online" else "Offline", tint = if (online) BrandBlue else Color(0xFF718096))
+                                }
+                                IconButton(onClick = { showPrinterSettings = true }) {
+                                    Icon(Icons.Default.Print, "Printer settings", tint = BrandBlue)
                                 }
                                 IconButton(onClick = onLogout) {
                                     Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
@@ -613,6 +622,9 @@ private fun ModernPosScreen(
                                     Column {
                                         Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                         Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
+                                    }
+                                    IconButton(onClick = { showPrinterSettings = true }, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Default.Print, "Printer settings", tint = BrandBlue)
                                     }
                                     IconButton(onClick = onLogout, modifier = Modifier.size(34.dp)) {
                                         Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
@@ -718,12 +730,18 @@ private fun ModernPosScreen(
             staffToken = session.token,
             onSuccess = { result ->
                 val soldLines = cart.map { it.copy() }
+                val sale = CompletedSale(result, soldLines, session.member)
                 store.saveOrder(result, soldLines.sumOf { it.quantity })
-                completedSale = CompletedSale(result, soldLines, session.member)
+                completedSale = sale
                 cart = emptyList()
                 showCheckout = false
                 online = true
                 refresh()
+                scope.launch {
+                    printerManager.printAuto(sale).onFailure { error ->
+                        snackbar.showSnackbar("Sale saved. Printer: " + (error.message ?: "not configured"))
+                    }
+                }
             },
             onFailure = { message ->
                 if (message.contains("session", ignoreCase = true)) {
@@ -744,10 +762,18 @@ private fun ModernPosScreen(
     completedSale?.let { sale ->
         TransactionSuccessDialog(
             sale = sale,
+            printerManager = printerManager,
             onClose = { completedSale = null }
         )
     }
 }
+
+    if (showPrinterSettings) {
+        PrinterSettingsDialog(
+            manager = printerManager,
+            onDismiss = { showPrinterSettings = false }
+        )
+    }
 
 @Composable
 private fun ModernProductCard(product: Product, onAdd: () -> Unit) {
@@ -964,9 +990,13 @@ private fun LocalOrdersDialog(orders: List<OrderRecord>, onDismiss: () -> Unit) 
 @Composable
 private fun TransactionSuccessDialog(
     sale: CompletedSale,
+    printerManager: PrinterManager,
     onClose: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     var tab by remember { mutableIntStateOf(0) }
+    var printing by remember { mutableStateOf(false) }
+    var printStatus by remember { mutableStateOf<String?>(null) }
     val result = sale.result
     val totalItems = sale.lines.sumOf { it.quantity }
 
