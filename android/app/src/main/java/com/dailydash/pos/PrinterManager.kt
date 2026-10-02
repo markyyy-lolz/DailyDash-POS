@@ -21,15 +21,15 @@ import java.net.Socket
 import java.util.UUID
 
 data class PrinterSettings(
-    val connectionType: String = "NETWORK",
+    val connectionType: String = "BLUETOOTH",
     val bluetoothAddress: String = "",
     val networkHost: String = "",
     val networkPort: Int = 9100,
     val usbDeviceId: Int = -1,
-    val paperWidth: Int = 80,
+    val paperWidth: Int = 58,
     val autoPrintReceipt: Boolean = true,
     val autoPrintOrderSlip: Boolean = true,
-    val autoCut: Boolean = true,
+    val autoCut: Boolean = false,
     val openCashDrawer: Boolean = false
 )
 
@@ -45,15 +45,15 @@ class PrinterManager(private val context: Context) {
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
     fun loadSettings(): PrinterSettings = PrinterSettings(
-        connectionType = prefs.getString("type", "NETWORK") ?: "NETWORK",
+        connectionType = prefs.getString("type", "BLUETOOTH") ?: "BLUETOOTH",
         bluetoothAddress = prefs.getString("bt_address", "") ?: "",
         networkHost = prefs.getString("net_host", "") ?: "",
         networkPort = prefs.getInt("net_port", 9100),
         usbDeviceId = prefs.getInt("usb_id", -1),
-        paperWidth = prefs.getInt("paper_width", 80),
+        paperWidth = prefs.getInt("paper_width", 58),
         autoPrintReceipt = prefs.getBoolean("auto_receipt", true),
         autoPrintOrderSlip = prefs.getBoolean("auto_slip", true),
-        autoCut = prefs.getBoolean("auto_cut", true),
+        autoCut = prefs.getBoolean("auto_cut", false),
         openCashDrawer = prefs.getBoolean("drawer", false)
     )
 
@@ -293,9 +293,9 @@ class PrinterManager(private val context: Context) {
     private fun left(out: ByteArrayOutputStream) = out.write(byteArrayOf(0x1B, 0x61, 0x00))
     private fun center(out: ByteArrayOutputStream) = out.write(byteArrayOf(0x1B, 0x61, 0x01))
     private fun bold(out: ByteArrayOutputStream, enabled: Boolean) =
-        out.write(byteArrayOf(0x1B, 0x45, if (enabled) 0x01 else 0x00))
+        out.write(byteArrayOf(0x1B, 0x45, (if (enabled) 0x01 else 0x00).toByte()))
     private fun doubleHeight(out: ByteArrayOutputStream, enabled: Boolean) =
-        out.write(byteArrayOf(0x1D, 0x21, if (enabled) 0x11 else 0x00))
+        out.write(byteArrayOf(0x1D, 0x21, (if (enabled) 0x11 else 0x00).toByte()))
     private fun cut(out: ByteArrayOutputStream) = out.write(byteArrayOf(0x1D, 0x56, 0x00))
     private fun feed(out: ByteArrayOutputStream, lines: Int) = repeat(lines) { text(out, "\n") }
     private fun text(out: ByteArrayOutputStream, value: String) = out.write(value.toByteArray(Charsets.US_ASCII))
