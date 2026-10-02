@@ -3,6 +3,8 @@ package com.dailydash.pos
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,38 +13,62 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.dailydash.pos.ui.theme.DailyDashTheme
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+
+private val BrandBlue = Color(0xFF0866D7)
+private val SoftBg = Color(0xFFF5F8FD)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             DailyDashTheme {
-                PosScreen(
-                    store = remember { PosStore(this) },
-                    api = remember { SupabaseApi() }
-                )
+                val api = remember { SupabaseApi() }
+                val store = remember { PosStore(this) }
+                var session by remember { mutableStateOf<StaffSession?>(null) }
+
+                if (session == null) {
+                    StaffLoginScreen(api = api, onLoggedIn = { session = it })
+                } else {
+                    ModernPosScreen(
+                        session = session!!,
+                        api = api,
+                        store = store,
+                        onLogout = {
+                            val old = session
+                            session = null
+                            if (old != null) {
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    api.staffLogout(old.token)
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -52,7 +78,387 @@ private fun peso(value: Int): String =
     NumberFormat.getCurrencyInstance(Locale("en", "PH")).format(value)
 
 @Composable
-private fun PosScreen(store: PosStore, api: SupabaseApi) {
+private fun DailyDashLogo(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(id = R.drawable.dailydash_logo),
+        contentDescription = "DailyDash",
+        modifier = modifier,
+        contentScale = ContentScale.Fit
+    )
+}
+
+@Composable
+private fun StaffLoginScreen(api: SupabaseApi, onLoggedIn: (StaffSession) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var staff by remember { mutableStateOf<List<StaffMember>>(emptyList()) }
+    var selected by remember { mutableStateOf<StaffMember?>(null) }
+    var pin by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var tab by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(false) }
+    var syncing by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun refreshStaff() {
+        syncing = true
+        scope.launch {
+            api.staffDirectory()
+                .onSuccess {
+                    staff = it
+                    if (selected == null || it.none { s -> s.id == selected?.id }) selected = it.firstOrNull()
+                    error = null
+                }
+                .onFailure { error = it.message ?: "Unable to load staff." }
+            syncing = false
+        }
+    }
+
+    fun submitPin() {
+        val member = selected ?: return
+        if (pin.length !in 4..6) {
+            error = "Enter your 4 to 6 digit PIN."
+            return
+        }
+        loading = true
+        error = null
+        scope.launch {
+            api.staffPinLogin(member.id, pin)
+                .onSuccess(onLoggedIn)
+                .onFailure {
+                    error = it.message ?: "Login failed."
+                    pin = ""
+                }
+            loading = false
+        }
+    }
+
+    fun submitAccount() {
+        if (username.isBlank() || password.length < 6) {
+            error = "Enter your username and password."
+            return
+        }
+        loading = true
+        error = null
+        scope.launch {
+            api.staffPasswordLogin(username.trim(), password)
+                .onSuccess(onLoggedIn)
+                .onFailure { error = it.message ?: "Login failed." }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshStaff() }
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(SoftBg)
+    ) {
+        val wide = maxWidth >= 800.dp
+
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                LoginHero(Modifier.weight(0.95f).fillMaxHeight())
+                LoginPanel(
+                    modifier = Modifier.weight(1.05f).fillMaxHeight(),
+                    tab = tab,
+                    onTabChange = { tab = it; error = null },
+                    staff = staff,
+                    selected = selected,
+                    onSelect = { selected = it; pin = ""; error = null },
+                    pin = pin,
+                    onDigit = { if (pin.length < 6) pin += it },
+                    onBackspace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
+                    onClear = { pin = "" },
+                    username = username,
+                    onUsername = { username = it },
+                    password = password,
+                    onPassword = { password = it },
+                    loading = loading,
+                    syncing = syncing,
+                    error = error,
+                    onPinSubmit = ::submitPin,
+                    onAccountSubmit = ::submitAccount,
+                    onRefresh = ::refreshStaff
+                )
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                item { LoginHero(Modifier.fillMaxWidth().height(250.dp)) }
+                item {
+                    LoginPanel(
+                        modifier = Modifier.fillMaxWidth(),
+                        tab = tab,
+                        onTabChange = { tab = it; error = null },
+                        staff = staff,
+                        selected = selected,
+                        onSelect = { selected = it; pin = ""; error = null },
+                        pin = pin,
+                        onDigit = { if (pin.length < 6) pin += it },
+                        onBackspace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
+                        onClear = { pin = "" },
+                        username = username,
+                        onUsername = { username = it },
+                        password = password,
+                        onPassword = { password = it },
+                        loading = loading,
+                        syncing = syncing,
+                        error = error,
+                        onPinSubmit = ::submitPin,
+                        onAccountSubmit = ::submitAccount,
+                        onRefresh = ::refreshStaff
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoginHero(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(Brush.linearGradient(listOf(Color(0xFFEAF4FF), Color.White, Color(0xFFFFF5E6))))
+            .padding(28.dp)
+    ) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            DailyDashLogo(Modifier.width(190.dp).height(120.dp))
+            Column {
+                Text(
+                    "Welcome back to\nDailyDash POS",
+                    fontSize = 34.sp,
+                    lineHeight = 38.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0F2E61)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Good food. Better days. Smarter operations.", color = Color(0xFF64748B))
+                Spacer(Modifier.height(22.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HeroImage("https://foodpanda.dhmedia.io/image/fd-ph/Products/115806513.jpg?height=512&width=512")
+                    HeroImage("https://foodpanda.dhmedia.io/image/fd-ph/Products/115806519.jpg?height=512&width=512")
+                    HeroImage("https://foodpanda.dhmedia.io/image/fd-ph/Products/115806492.jpg?height=512&width=512")
+                }
+            }
+            Text("Secure staff access • Inventory • Reports", color = BrandBlue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun HeroImage(url: String) {
+    Card(Modifier.size(92.dp), shape = RoundedCornerShape(24.dp)) {
+        AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    }
+}
+
+@Composable
+private fun LoginPanel(
+    modifier: Modifier,
+    tab: Int,
+    onTabChange: (Int) -> Unit,
+    staff: List<StaffMember>,
+    selected: StaffMember?,
+    onSelect: (StaffMember) -> Unit,
+    pin: String,
+    onDigit: (String) -> Unit,
+    onBackspace: () -> Unit,
+    onClear: () -> Unit,
+    username: String,
+    onUsername: (String) -> Unit,
+    password: String,
+    onPassword: (String) -> Unit,
+    loading: Boolean,
+    syncing: Boolean,
+    error: String?,
+    onPinSubmit: () -> Unit,
+    onAccountSubmit: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    Surface(modifier = modifier, color = Color.White) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp)) {
+            Text("Secure Login", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF102A56))
+            Text("Select a staff account or sign in with credentials.", color = Color(0xFF718096))
+            Spacer(Modifier.height(22.dp))
+
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFFF0F5FB), RoundedCornerShape(16.dp)).padding(4.dp)
+            ) {
+                LoginTab("Quick PIN Login", Icons.Default.Lock, tab == 0, Modifier.weight(1f)) { onTabChange(0) }
+                LoginTab("Staff Account Login", Icons.Default.Person, tab == 1, Modifier.weight(1f)) { onTabChange(1) }
+            }
+
+            Spacer(Modifier.height(22.dp))
+
+            if (tab == 0) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Select your account", fontWeight = FontWeight.Bold, color = Color(0xFF243B64))
+                    TextButton(onClick = onRefresh, enabled = !syncing) {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(if (syncing) "Syncing" else "Refresh")
+                    }
+                }
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(staff, key = { it.id }) { member ->
+                        StaffCard(member, selected?.id == member.id) { onSelect(member) }
+                    }
+                }
+
+                if (staff.isEmpty() && !syncing) {
+                    Text(
+                        "No active staff yet. Add staff from the DailyDash Manager dashboard.",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Text("Enter your PIN", fontWeight = FontWeight.Bold, color = Color(0xFF243B64))
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    repeat(6) { index ->
+                        Box(
+                            Modifier.size(40.dp).background(Color(0xFFF1F5FA), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (index < pin.length) "●" else "", color = BrandBlue, fontSize = 17.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                PinPad(onDigit, onBackspace, onClear)
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onPinSubmit,
+                    enabled = selected != null && pin.length in 4..6 && !loading,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text(if (loading) "Signing in..." else "Continue to POS", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = onUsername,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Staff username") },
+                    leadingIcon = { Icon(Icons.Default.Person, null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPassword,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Password") },
+                    leadingIcon = { Icon(Icons.Default.Lock, null) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onAccountSubmit,
+                    enabled = username.isNotBlank() && password.length >= 6 && !loading,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                ) {
+                    Text(if (loading) "Signing in..." else "Sign in to DailyDash", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Passwords can be assigned by a manager in Staff Management.", color = Color(0xFF718096), fontSize = 12.sp)
+            }
+
+            error?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoginTab(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Surface(modifier = modifier.clickable(onClick = onClick), shape = RoundedCornerShape(13.dp), color = if (selected) BrandBlue else Color.Transparent) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Icon(icon, null, tint = if (selected) Color.White else BrandBlue, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(text, color = if (selected) Color.White else Color(0xFF29496F), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun StaffCard(member: StaffMember, selected: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.width(112.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFFEAF3FF) else Color(0xFFF8FAFD)),
+        border = if (selected) androidx.compose.foundation.BorderStroke(2.dp, BrandBlue) else null
+    ) {
+        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            StaffAvatar(member, 44)
+            Spacer(Modifier.height(8.dp))
+            Text(member.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(member.role.replaceFirstChar { it.uppercase() }, color = BrandBlue, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun StaffAvatar(member: StaffMember, size: Int) {
+    val initials = member.displayName.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
+    if (!member.avatarUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = member.avatarUrl,
+            contentDescription = member.displayName,
+            modifier = Modifier.size(size.dp).clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        Box(Modifier.size(size.dp).background(BrandBlue.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
+            Text(initials, color = BrandBlue, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+private fun PinPad(onDigit: (String) -> Unit, onBackspace: () -> Unit, onClear: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9")).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                row.forEach { n ->
+                    OutlinedButton(onClick = { onDigit(n) }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(15.dp)) {
+                        Text(n, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(15.dp)) { Text("Clear") }
+            OutlinedButton(onClick = { onDigit("0") }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(15.dp)) { Text("0", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+            OutlinedButton(onClick = onBackspace, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(15.dp)) { Text("⌫") }
+        }
+    }
+}
+
+@Composable
+private fun ModernPosScreen(
+    session: StaffSession,
+    api: SupabaseApi,
+    store: PosStore,
+    onLogout: () -> Unit
+) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
@@ -62,20 +468,22 @@ private fun PosScreen(store: PosStore, api: SupabaseApi) {
     var cart by remember { mutableStateOf(listOf<CartLine>()) }
     var online by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
+    var showCart by remember { mutableStateOf(false) }
     var showCheckout by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
+    var showOrders by remember { mutableStateOf(false) }
 
     fun refresh() {
         syncing = true
         scope.launch {
             api.loadProducts()
-                .onSuccess {
-                    if (it.isNotEmpty()) products = it
+                .onSuccess { cloud ->
+                    if (cloud.isNotEmpty()) products = cloud
                     online = true
+                    cart = cart.filter { line -> cloud.any { it.id == line.product.id && it.available } }
                 }
                 .onFailure {
                     online = false
-                    snackbar.showSnackbar("Cloud unavailable. Using offline menu.")
+                    snackbar.showSnackbar("Cloud unavailable. Showing cached menu.")
                 }
             syncing = false
         }
@@ -88,112 +496,133 @@ private fun PosScreen(store: PosStore, api: SupabaseApi) {
         (selectedCategory == "All" || it.category == selectedCategory) &&
             (search.isBlank() || it.name.contains(search, ignoreCase = true))
     }
+    val cartTotal = cart.sumOf { it.lineTotal }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = SoftBg,
+        bottomBar = {
+            NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
+                NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
+                NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
+                NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
+                NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
+            }
+        }
     ) { padding ->
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(18.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "DAILYDASH",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 30.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text("Android Cloud POS", color = Color(0xFF667085))
-                    }
-
-                    AssistChip(
-                        onClick = { refresh() },
-                        label = { Text(if (syncing) "Syncing..." else if (online) "Cloud online" else "Offline menu") },
-                        leadingIcon = {
-                            Icon(
-                                if (online) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(onClick = { refresh() }, enabled = !syncing) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                    OutlinedButton(onClick = { showHistory = true }) {
-                        Icon(Icons.Default.History, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Orders")
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    placeholder = { Text("Search menu") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp)
+                DailyDashLogo(Modifier.width(118.dp).height(66.dp))
+                Spacer(Modifier.weight(1f))
+                AssistChip(
+                    onClick = { refresh() },
+                    label = { Text(if (syncing) "Syncing" else if (online) "Cloud online" else "Offline") },
+                    leadingIcon = { Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, null, Modifier.size(17.dp)) }
                 )
-
-                Spacer(Modifier.height(10.dp))
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(categories) { category ->
-                        FilterChip(
-                            selected = selectedCategory == category,
-                            onClick = { selectedCategory = category },
-                            label = { Text(category) }
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(180.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filtered, key = { it.id }) { product ->
-                        ProductCard(product) {
-                            val index = cart.indexOfFirst {
-                                it.product.id == product.id && !it.upsized
-                            }
-                            cart = if (index >= 0) {
-                                cart.toMutableList().also { list ->
-                                    list[index] = list[index].copy(
-                                        quantity = list[index].quantity + 1
-                                    )
-                                }
-                            } else {
-                                cart + CartLine(product)
-                            }
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 2.dp) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StaffAvatar(session.member, 32)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
+                        }
+                        IconButton(onClick = onLogout, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
                         }
                     }
                 }
             }
 
-            CartPanel(
-                cart = cart,
-                onChange = { cart = it },
-                onCheckout = { showCheckout = true }
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                placeholder = { Text("Search menu items...") },
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = Color.White,
+                    focusedContainerColor = Color.White,
+                    unfocusedBorderColor = Color.Transparent
+                )
             )
+
+            Spacer(Modifier.height(10.dp))
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(categories) { category ->
+                    FilterChip(
+                        selected = selectedCategory == category,
+                        onClick = { selectedCategory = category },
+                        label = { Text(category) },
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(155.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(filtered, key = { it.id }) { product ->
+                    ModernProductCard(product) {
+                        val index = cart.indexOfFirst { it.product.id == product.id && !it.upsized }
+                        cart = if (index >= 0) {
+                            cart.toMutableList().also { list ->
+                                list[index] = list[index].copy(quantity = list[index].quantity + 1)
+                            }
+                        } else cart + CartLine(product)
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFFE8F2FF)
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(44.dp).background(BrandBlue, RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(cart.sumOf { it.quantity }.toString(), color = Color.White, fontWeight = FontWeight.Black)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(cart.sumOf { it.quantity }.toString() + " item(s)", color = Color(0xFF60738F), fontSize = 12.sp)
+                        Text(peso(cartTotal), color = Color(0xFF102A56), fontWeight = FontWeight.Black, fontSize = 22.sp)
+                    }
+                    Button(
+                        onClick = { showCart = true },
+                        enabled = cart.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                    ) { Text("View Cart") }
+                }
+            }
         }
+    }
+
+    if (showCart) {
+        CartDialog(
+            cart = cart,
+            onChange = { cart = it },
+            onDismiss = { showCart = false },
+            onCheckout = { showCart = false; showCheckout = true }
+        )
     }
 
     if (showCheckout) {
@@ -202,113 +631,71 @@ private fun PosScreen(store: PosStore, api: SupabaseApi) {
             itemCount = cart.sumOf { it.quantity },
             api = api,
             cart = cart,
+            staffToken = session.token,
             onSuccess = { result ->
                 store.saveOrder(result, cart.sumOf { it.quantity })
                 cart = emptyList()
                 showCheckout = false
                 online = true
-                scope.launch {
-                    snackbar.showSnackbar(result.orderNo + " completed • " + peso(result.total))
-                }
+                refresh()
+                scope.launch { snackbar.showSnackbar(result.orderNo + " completed • " + peso(result.total)) }
             },
-            onFailure = {
-                online = false
+            onFailure = { message ->
+                if (message.contains("session", ignoreCase = true)) {
+                    scope.launch { snackbar.showSnackbar("Staff session expired. Please log in again.") }
+                    onLogout()
+                } else {
+                    scope.launch { snackbar.showSnackbar(message) }
+                }
             },
             onDismiss = { showCheckout = false }
         )
     }
 
-    if (showHistory) {
-        AlertDialog(
-            onDismissRequest = { showHistory = false },
-            title = { Text("Synced Orders") },
-            text = {
-                val orders = store.orders()
-                if (orders.isEmpty()) {
-                    Text("No completed orders on this device yet.")
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 460.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(orders.take(50)) { order ->
-                            Card {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column {
-                                        Text(order.orderNo, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            order.items.toString() + " item(s) • " + order.tender,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    Text(peso(order.total), fontWeight = FontWeight.Black)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showHistory = false }) {
-                    Text("Close")
-                }
-            }
-        )
+    if (showOrders) {
+        LocalOrdersDialog(store.orders(), onDismiss = { showOrders = false })
     }
 }
 
 @Composable
-private fun ProductCard(product: Product, onAdd: () -> Unit) {
+private fun ModernProductCard(product: Product, onAdd: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clickable(enabled = product.available) { onAdd() },
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth().height(225.dp).clickable(enabled = product.available, onClick = onAdd),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    product.category,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxWidth().height(118.dp)) {
+                AsyncImage(
+                    model = product.imageUrl,
+                    contentDescription = product.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
-                Text(product.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 if (!product.available) {
-                    Text(
-                        "SOLD OUT",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                } else if (product.allowUpsize) {
-                    Text("Upsize +" + peso(product.upsizePrice), fontSize = 12.sp)
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                        color = Color(0xFFD9344C),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("SOLD OUT", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+                    }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(peso(product.price), fontWeight = FontWeight.Black, fontSize = 22.sp)
-                FilledIconButton(
-                    onClick = onAdd,
-                    enabled = product.available
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = if (product.available) "Add" else "Sold out")
+            Column(Modifier.fillMaxSize().padding(11.dp)) {
+                Text(product.category, color = BrandBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(product.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(peso(product.price), color = Color(0xFF102A56), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.weight(1f))
+                    FilledIconButton(
+                        onClick = onAdd,
+                        enabled = product.available,
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = BrandBlue)
+                    ) { Icon(Icons.Default.Add, "Add") }
                 }
             }
         }
@@ -316,138 +703,66 @@ private fun ProductCard(product: Product, onAdd: () -> Unit) {
 }
 
 @Composable
-private fun CartPanel(
+private fun CartDialog(
     cart: List<CartLine>,
     onChange: (List<CartLine>) -> Unit,
+    onDismiss: () -> Unit,
     onCheckout: () -> Unit
 ) {
-    val total = cart.sumOf { it.lineTotal }
-
-    Surface(
-        modifier = Modifier
-            .width(390.dp)
-            .fillMaxHeight(),
-        color = Color.White,
-        shadowElevation = 3.dp
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Text("Current Order", fontSize = 24.sp, fontWeight = FontWeight.Black)
-            Text(cart.sumOf { it.quantity }.toString() + " item(s)", color = Color(0xFF667085))
-            Spacer(Modifier.height(12.dp))
-
-            if (cart.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Tap a menu item to start an order.", color = Color(0xFF98A2B3))
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(cart) { line ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
-                            Column(Modifier.padding(12.dp)) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Current Order", fontWeight = FontWeight.Black) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 440.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(cart) { line ->
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF7FAFE))) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(line.product.name, fontWeight = FontWeight.Bold)
+                                    Text(peso(line.unitPrice) + " each", color = Color(0xFF718096), fontSize = 12.sp)
+                                }
+                                IconButton(onClick = { onChange(cart.filterNot { it == line }) }) {
+                                    Icon(Icons.Default.Delete, "Delete")
+                                }
+                            }
+                            if (line.product.allowUpsize) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(line.product.name, fontWeight = FontWeight.Bold)
-                                        Text(peso(line.unitPrice) + " each", fontSize = 12.sp)
-                                    }
-                                    IconButton(
-                                        onClick = { onChange(cart.filterNot { it == line }) }
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                                    }
-                                }
-
-                                if (line.product.allowUpsize) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Switch(
-                                            checked = line.upsized,
-                                            onCheckedChange = { checked ->
-                                                onChange(
-                                                    cart.map {
-                                                        if (it == line) line.copy(upsized = checked) else it
-                                                    }
-                                                )
-                                            }
-                                        )
-                                        Text("Upsize +" + peso(line.product.upsizePrice))
-                                    }
-                                }
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = {
-                                            if (line.quantity > 1) {
-                                                onChange(
-                                                    cart.map {
-                                                        if (it == line) line.copy(quantity = line.quantity - 1) else it
-                                                    }
-                                                )
-                                            }
+                                    Switch(
+                                        checked = line.upsized,
+                                        onCheckedChange = { checked ->
+                                            onChange(cart.map { if (it == line) line.copy(upsized = checked) else it })
                                         }
-                                    ) {
-                                        Icon(Icons.Default.Remove, contentDescription = "Minus")
-                                    }
-
-                                    Text(line.quantity.toString(), fontWeight = FontWeight.Bold)
-
-                                    IconButton(
-                                        onClick = {
-                                            onChange(
-                                                cart.map {
-                                                    if (it == line) line.copy(quantity = line.quantity + 1) else it
-                                                }
-                                            )
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Plus")
-                                    }
-
-                                    Spacer(Modifier.weight(1f))
-                                    Text(peso(line.lineTotal), fontWeight = FontWeight.Black)
+                                    )
+                                    Text("Upsize +" + peso(line.product.upsizePrice))
                                 }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = {
+                                    if (line.quantity > 1) onChange(cart.map { if (it == line) line.copy(quantity = line.quantity - 1) else it })
+                                }) { Icon(Icons.Default.Remove, "Minus") }
+                                Text(line.quantity.toString(), fontWeight = FontWeight.Bold)
+                                IconButton(onClick = {
+                                    onChange(cart.map { if (it == line) line.copy(quantity = line.quantity + 1) else it })
+                                }) { Icon(Icons.Default.Add, "Plus") }
+                                Spacer(Modifier.weight(1f))
+                                Text(peso(line.lineTotal), fontWeight = FontWeight.Black)
                             }
                         }
                     }
                 }
             }
-
-            HorizontalDivider()
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("TOTAL", fontWeight = FontWeight.Bold)
-                Text(
-                    peso(total),
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
-                )
+        },
+        confirmButton = {
+            Button(onClick = onCheckout, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)) {
+                Text("Checkout • " + peso(cart.sumOf { it.lineTotal }))
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            Button(
-                onClick = onCheckout,
-                enabled = cart.isNotEmpty(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("CHECKOUT", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Continue ordering") } }
+    )
 }
 
 @Composable
@@ -456,8 +771,9 @@ private fun CheckoutDialog(
     itemCount: Int,
     api: SupabaseApi,
     cart: List<CartLine>,
+    staffToken: String,
     onSuccess: (CloudOrderResult) -> Unit,
-    onFailure: () -> Unit,
+    onFailure: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -471,45 +787,30 @@ private fun CheckoutDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Checkout") },
+        title = { Text("Checkout", fontWeight = FontWeight.Black) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    itemCount.toString() + " item(s) • " + peso(total),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black
-                )
-
+                Text(itemCount.toString() + " item(s) • " + peso(total), fontSize = 22.sp, fontWeight = FontWeight.Black)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf("Cash", "GCash", "Maya")) { method ->
-                        FilterChip(
-                            selected = tender == method,
-                            onClick = { tender = method },
-                            label = { Text(method) }
-                        )
+                    items(listOf("Cash","GCash","Maya")) { method ->
+                        FilterChip(selected = tender == method, onClick = { tender = method }, label = { Text(method) })
                     }
                 }
-
                 if (tender == "Cash") {
                     OutlinedTextField(
                         value = cash,
                         onValueChange = { cash = it.filter(Char::isDigit) },
                         label = { Text("Cash received") },
                         prefix = { Text("₱") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
                     Text("Change: " + peso(change), fontWeight = FontWeight.Bold)
                 } else {
-                    Text("Confirm " + tender + " payment before completing.")
+                    Text("Confirm " + tender + " payment before completing the sale.")
                 }
-
-                error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error)
-                }
-
-                if (busy) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -519,27 +820,50 @@ private fun CheckoutDialog(
                     busy = true
                     error = null
                     scope.launch {
-                        api.createOrder(
-                            cart,
-                            tender,
-                            if (tender == "Cash") cashValue else total
-                        ).onSuccess {
-                            onSuccess(it)
-                        }.onFailure {
-                            error = it.message ?: "Unable to save order."
-                            onFailure()
-                        }
+                        api.createOrder(cart, tender, if (tender == "Cash") cashValue else total, staffToken)
+                            .onSuccess(onSuccess)
+                            .onFailure {
+                                val message = it.message ?: "Unable to save order."
+                                error = message
+                                onFailure(message)
+                            }
                         busy = false
                     }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = if (tender == "Cash") BrandBlue else Color(0xFF17A75B))
+            ) { Text(if (busy) "Saving..." else "Complete Payment") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun LocalOrdersDialog(orders: List<OrderRecord>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Synced Orders", fontWeight = FontWeight.Black) },
+        text = {
+            if (orders.isEmpty()) {
+                Text("No completed orders on this device yet.")
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 460.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(orders.take(50)) { order ->
+                        Card {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column {
+                                    Text(order.orderNo, fontWeight = FontWeight.Bold)
+                                    Text(order.items.toString() + " item(s) • " + order.tender, fontSize = 12.sp, color = Color(0xFF718096))
+                                }
+                                Text(peso(order.total), fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
                 }
-            ) {
-                Text(if (busy) "Saving..." else "Complete")
             }
         },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        confirmButton = { Button(onClick = onDismiss) { Text("Close") } }
     )
 }
