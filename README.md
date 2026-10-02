@@ -4,17 +4,17 @@ Android-first point-of-sale system with a GitHub Pages manager dashboard, connec
 
 ## Live backend
 - Supabase project: `smpcs1918ams`
-- DailyDash products, orders, order items, settings, and manager login protection
+- DailyDash products, orders, order items, inventory, stock movements, settings, and manager login protection
 - Server-side checkout price validation
 - Deployed `dailydash-admin` Edge Function
 - Cash, GCash, and Maya
-- Menu management, sales dashboard, order history, voiding, and manager PIN changes
+- Menu management, automatic inventory deductions/restocks, low-stock monitoring, sales reports, CSV export, order history, voiding, and manager PIN changes
 
 ## Android
 Open the `android/` folder in Android Studio with JDK 17. The app supports offline menu fallback, cloud menu sync, cart quantities, +₱10 drink upsize, cash change, GCash/Maya, and cloud checkout.
 
 ## Web manager
-The `web/` folder is deployed with GitHub Pages through GitHub Actions.
+The `web/` folder is deployed with GitHub Pages through GitHub Actions. The manager includes Dashboard, Menu, Inventory, Orders, Reports, and Settings.
 
 ## Menu
 - Coffee Based — ₱29 (+₱10 upsize)
