@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#075dbe">
+  <title>DailyDash POS Manager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><div class="logo">DD</div><div><b>DAILYDASH</b><span>POS Manager</span></div></div>
+      <nav>
+        <button class="nav active" data-view="dashboard">▦ Dashboard</button>
+        <button class="nav" data-view="menu">☰ Menu</button>
+        <button class="nav" data-view="orders">▤ Orders</button>
+        <button class="nav" data-view="settings">⚙ Settings</button>
+      </nav>
+      <div class="side-foot">
+        <div class="cloud"><i id="cloudDot"></i><span id="cloudText">Locked</span></div>
+        <button id="logoutBtn" class="ghost">Log out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <div><h1 id="title">Dashboard</h1><p id="subtitle">Live DailyDash sales overview</p></div>
+        <div class="top-actions"><span id="todayLabel" class="date"></span><button id="refreshBtn" class="primary">↻ Refresh</button></div>
+      </header>
+
+      <section id="dashboard" class="view active-view">
+        <div class="hero">
+          <div><span class="eyebrow">DAILYDASH CLOUD POS</span><h2>Today at a glance.</h2><p>Android POS transactions are synchronized through Supabase.</p></div>
+          <div class="hero-mark">DD</div>
+        </div>
+        <div class="stats">
+          <article><span>Sales today</span><strong id="salesToday">₱0</strong><small>Completed orders</small></article>
+          <article><span>Orders today</span><strong id="ordersToday">0</strong><small>Cloud transactions</small></article>
+          <article><span>Average order</span><strong id="avgOrder">₱0</strong><small>Average ticket</small></article>
+          <article><span>Menu items</span><strong id="menuCount">0</strong><small>Products in Supabase</small></article>
+        </div>
+        <div class="two">
+          <article class="panel"><div class="panel-head"><div><h3>Payment mix</h3><p>Today’s completed sales</p></div></div><div id="tenderStats"></div></article>
+          <article class="panel"><div class="panel-head"><div><h3>Recent orders</h3><p>Latest cloud transactions</p></div><button class="link" data-jump="orders">View all</button></div><div id="recentOrders"></div></article>
+        </div>
+      </section>
+
+      <section id="menu" class="view">
+        <div class="section-head"><div><h2>Menu management</h2><p>Update cloud prices and availability.</p></div><input id="menuSearch" class="search" placeholder="Search menu..."></div>
+        <div id="menuFilters" class="filters"></div>
+        <div id="menuGrid" class="menu-grid"></div>
+      </section>
+
+      <section id="orders" class="view">
+        <div class="section-head"><div><h2>Orders</h2><p>Transactions from all DailyDash POS devices.</p></div><button id="reloadOrders" class="secondary">Reload orders</button></div>
+        <article class="panel table-panel"><div id="ordersTable"></div></article>
+      </section>
+
+      <section id="settings" class="view">
+        <div class="settings-grid">
+          <article class="panel">
+            <h3>Cloud connection</h3>
+            <p class="muted">Android and this manager use the same Supabase backend.</p>
+            <div class="info"><span>Project</span><b>cpodvrwykhkndtwcsmgp</b></div>
+            <div class="info"><span>Region</span><b>Singapore</b></div>
+            <div class="info"><span>Admin API</span><b>dailydash-admin</b></div>
+          </article>
+          <article class="panel">
+            <h3>Change manager PIN</h3>
+            <p class="muted">Use exactly six digits.</p>
+            <form id="pinForm" class="form">
+              <input id="newPin" inputmode="numeric" maxlength="6" placeholder="New 6-digit PIN" required>
+              <input id="confirmPin" inputmode="numeric" maxlength="6" placeholder="Confirm PIN" required>
+              <button class="primary" type="submit">Change PIN</button>
+            </form>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="loginOverlay" class="overlay show">
+    <form id="loginForm" class="login-card">
+      <div class="login-logo">DD</div>
+      <span class="eyebrow blue">DAILYDASH POS</span>
+      <h2>Manager access</h2>
+      <p>Enter your 6-digit manager PIN.</p>
+      <input id="pinInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="• • • • • •" required>
+      <button class="primary" type="submit">Open Manager</button>
+      <p id="loginError" class="error"></p>
+    </form>
+  </div>
+
+  <div id="modal" class="overlay">
+    <div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Order details</h3><button id="modalClose" class="icon">×</button></div><div id="modalBody"></div></div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
