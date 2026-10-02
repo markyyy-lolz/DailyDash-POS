@@ -286,7 +286,14 @@ private fun ProductCard(product: Product, onAdd: () -> Unit) {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(product.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                if (product.allowUpsize) {
+                if (!product.available) {
+                    Text(
+                        "SOLD OUT",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                } else if (product.allowUpsize) {
                     Text("Upsize +" + peso(product.upsizePrice), fontSize = 12.sp)
                 }
             }
@@ -297,8 +304,11 @@ private fun ProductCard(product: Product, onAdd: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(peso(product.price), fontWeight = FontWeight.Black, fontSize = 22.sp)
-                FilledIconButton(onClick = onAdd) {
-                    Icon(Icons.Default.Add, contentDescription = "Add")
+                FilledIconButton(
+                    onClick = onAdd,
+                    enabled = product.available
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = if (product.available) "Add" else "Sold out")
                 }
             }
         }
