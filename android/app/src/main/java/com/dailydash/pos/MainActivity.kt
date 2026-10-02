@@ -184,32 +184,35 @@ private fun StaffLoginScreen(api: SupabaseApi, onLoggedIn: (StaffSession) -> Uni
                 )
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                item { LoginHero(Modifier.fillMaxWidth().height(250.dp)) }
-                item {
-                    LoginPanel(
-                        modifier = Modifier.fillMaxWidth(),
-                        tab = tab,
-                        onTabChange = { tab = it; error = null },
-                        staff = staff,
-                        selected = selected,
-                        onSelect = { selected = it; pin = ""; error = null },
-                        pin = pin,
-                        onDigit = { if (pin.length < 6) pin += it },
-                        onBackspace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
-                        onClear = { pin = "" },
-                        username = username,
-                        onUsername = { username = it },
-                        password = password,
-                        onPassword = { password = it },
-                        loading = loading,
-                        syncing = syncing,
-                        error = error,
-                        onPinSubmit = ::submitPin,
-                        onAccountSubmit = ::submitAccount,
-                        onRefresh = ::refreshStaff
-                    )
-                }
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 24.dp)
+            ) {
+                LoginHero(Modifier.fillMaxWidth().height(250.dp))
+                LoginPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    tab = tab,
+                    onTabChange = { tab = it; error = null },
+                    staff = staff,
+                    selected = selected,
+                    onSelect = { selected = it; pin = ""; error = null },
+                    pin = pin,
+                    onDigit = { if (pin.length < 6) pin += it },
+                    onBackspace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
+                    onClear = { pin = "" },
+                    username = username,
+                    onUsername = { username = it },
+                    password = password,
+                    onPassword = { password = it },
+                    loading = loading,
+                    syncing = syncing,
+                    error = error,
+                    onPinSubmit = ::submitPin,
+                    onAccountSubmit = ::submitAccount,
+                    onRefresh = ::refreshStaff
+                )
             }
         }
     }
@@ -277,7 +280,7 @@ private fun LoginPanel(
     onRefresh: () -> Unit
 ) {
     Surface(modifier = modifier, color = Color.White) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 30.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp)) {
             Text("Secure Login", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF102A56))
             Text("Select a staff account or sign in with credentials.", color = Color(0xFF718096))
             Spacer(Modifier.height(22.dp))
