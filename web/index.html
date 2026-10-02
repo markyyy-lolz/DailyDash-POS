@@ -10,10 +10,10 @@
 <body>
   <div class="shell">
     <aside class="side">
-      <div class="brand"><div class="logo">DD</div><div><b>DAILYDASH</b><span>POS Manager</span></div></div>
+      <div class="brand"><img class="brand-logo" src="assets/dailydash-logo.svg" alt="DailyDash"><div><b>DAILYDASH</b><span>POS Manager</span></div></div>
       <nav>
         <button class="nav active" data-view="dashboard">▦ Dashboard</button>
-        <button class="nav" data-view="menu">☰ Menu</button>
+        <button class="nav" data-view="menu">☰ Menu</button>\n        <button class="nav" data-view="staff">◎ Staff</button>
         <button class="nav" data-view="inventory">▣ Inventory</button>
         <button class="nav" data-view="orders">▤ Orders</button>
         <button class="nav" data-view="reports">▥ Reports</button>
@@ -71,6 +71,19 @@
           <div class="panel-head"><div><h3>Recent stock movements</h3><p>Sales, void restocks, and manual adjustments</p></div></div>
           <div id="movementTable"></div>
         </article>
+      </section>
+
+      <section id="staff" class="view">
+        <div class="section-head">
+          <div><h2>Staff Management</h2><p>Assign cashiers, managers, PINs, passwords, and POS access.</p></div>
+          <button id="addStaffBtn" class="primary">+ Add Staff</button>
+        </div>
+        <div class="staff-summary">
+          <article class="staff-stat"><span>Active staff</span><strong id="activeStaffCount">0</strong></article>
+          <article class="staff-stat"><span>Managers</span><strong id="managerStaffCount">0</strong></article>
+          <article class="staff-stat"><span>Cashiers</span><strong id="cashierStaffCount">0</strong></article>
+        </div>
+        <div id="staffGrid" class="staff-grid"></div>
       </section>
 
       <section id="orders" class="view">
@@ -134,20 +147,57 @@
     </main>
   </div>
 
-  <div id="loginOverlay" class="overlay show">
-    <form id="loginForm" class="login-card">
-      <div class="login-logo">DD</div>
-      <span class="eyebrow blue">DAILYDASH POS</span>
-      <h2>Manager access</h2>
-      <p>Enter your 6-digit manager PIN.</p>
-      <input id="pinInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="• • • • • •" required>
-      <button class="primary" type="submit">Open Manager</button>
-      <p id="loginError" class="error"></p>
-    </form>
+  <div id="loginOverlay" class="overlay show login-overlay">
+    <div class="login-shell">
+      <section class="login-visual">
+        <img src="assets/dailydash-logo.svg" alt="DailyDash" class="login-brand-logo">
+        <div>
+          <span class="eyebrow">DAILYDASH CLOUD POS</span>
+          <h2>Run the store. Not the paperwork.</h2>
+          <p>Staff access, live inventory, orders, and reports in one modern workspace.</p>
+        </div>
+        <div class="login-food-grid">
+          <img src="https://foodpanda.dhmedia.io/image/fd-ph/Products/115806513.jpg?height=512&width=512" alt="Caramel Macchiato">
+          <img src="https://foodpanda.dhmedia.io/image/fd-ph/Products/115806519.jpg?height=512&width=512" alt="Matcha Latte">
+          <img src="https://foodpanda.dhmedia.io/image/fd-ph/Products/115806492.jpg?height=512&width=512" alt="Carbonara">
+        </div>
+      </section>
+      <form id="loginForm" class="login-card modern-login-card">
+        <span class="eyebrow blue">MANAGER ACCESS</span>
+        <h2>Welcome back</h2>
+        <p>Use the manager PIN to open the DailyDash dashboard and assign staff access.</p>
+        <label class="field-label">Manager PIN</label>
+        <input id="pinInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="• • • • • •" required>
+        <button class="primary full" type="submit">Open DailyDash Manager</button>
+        <p class="login-hint">Staff members sign in from the Android POS using their own PIN or account password.</p>
+        <p id="loginError" class="error"></p>
+      </form>
+    </div>
   </div>
 
   <div id="modal" class="overlay">
     <div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Order details</h3><button id="modalClose" class="icon">×</button></div><div id="modalBody"></div></div>
+  </div>
+
+  <div id="staffModal" class="overlay">
+    <form id="staffForm" class="modal-card staff-form-card">
+      <div class="modal-head"><h3 id="staffModalTitle">Add Staff</h3><button id="staffModalClose" type="button" class="icon">×</button></div>
+      <input id="staffId" type="hidden">
+      <div class="staff-form-grid">
+        <label><span>Staff code</span><input id="staffCode" maxlength="24" placeholder="CASH001" required></label>
+        <label><span>Display name</span><input id="staffName" maxlength="80" placeholder="Maria Santos" required></label>
+        <label><span>Username</span><input id="staffUsername" maxlength="50" placeholder="maria"></label>
+        <label><span>Role</span><select id="staffRole"><option value="cashier">Cashier</option><option value="staff">Staff</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label>
+        <label><span>PIN (4–6 digits)</span><input id="staffPin" inputmode="numeric" maxlength="6" placeholder="Leave blank to keep current"></label>
+        <label><span>Password</span><input id="staffPassword" type="password" minlength="6" placeholder="Optional / leave blank to keep"></label>
+        <label class="staff-full"><span>Avatar URL</span><input id="staffAvatar" type="url" placeholder="https://..."></label>
+      </div>
+      <label class="staff-active-row"><input id="staffActive" type="checkbox" checked> Active — can sign in to POS</label>
+      <div class="modal-actions">
+        <button id="staffCancel" type="button" class="secondary">Cancel</button>
+        <button id="staffSaveBtn" type="submit" class="primary">Save Staff</button>
+      </div>
+    </form>
   </div>
 
   <div id="toast" class="toast"></div>
