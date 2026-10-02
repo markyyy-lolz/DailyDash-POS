@@ -1,0 +1,41 @@
+package com.dailydash.pos
+
+object MenuSeed {
+    val products = listOf(
+        Product("coffee-dd-original", "DD Original", "Coffee Based", 29, true),
+        Product("coffee-pistachio", "Pistachio Coffee", "Coffee Based", 29, true),
+        Product("coffee-buko-cold-foam", "Buko Cold Foam", "Coffee Based", 29, true),
+        Product("coffee-caramel-macchiato", "Caramel Macchiato", "Coffee Based", 29, true),
+        Product("coffee-mocha", "Mocha (Chocolate)", "Coffee Based", 29, true),
+        Product("coffee-white-mocha", "White Mocha", "Coffee Based", 29, true),
+        Product("coffee-dirty-matcha", "Dirty Matcha", "Coffee Based", 29, true),
+        Product("milk-pistachio-latte", "Pistachio Latte", "Milk Based", 29, true),
+        Product("milk-pistachio-chocolate", "Pistachio Chocolate", "Milk Based", 29, true),
+        Product("milk-chocolate-latte", "Chocolate Latte", "Milk Based", 29, true),
+        Product("milk-matcha-latte", "Matcha Latte", "Milk Based", 29, true),
+        Product("milk-white-matcha", "White Matcha", "Milk Based", 29, true),
+        Product("waffly-cream-puff", "Cream Puff", "Waffly Bites", 39),
+        Product("waffly-caramel", "Caramel", "Waffly Bites", 39),
+        Product("waffly-strawberry", "Strawberry", "Waffly Bites", 39),
+        Product("waffly-chocolate", "Chocolate", "Waffly Bites", 39),
+        Product("waffly-choco-caramel", "Choco Caramel", "Waffly Bites", 39),
+        Product("waffly-berry-caramel", "Berry Caramel", "Waffly Bites", 39),
+        Product("waffly-choco-berry", "Choco Berry", "Waffly Bites", 39),
+        Product("stuffles-ala-king", "Ala King", "Stuffles Classic", 39),
+        Product("stuffles-pizza-melt", "Pizza Melt", "Stuffles Classic", 39),
+        Product("stuffles-creamy-pesto", "Creamy Pesto", "Stuffles Classic", 39),
+        Product("stuffles-cheese", "Cheese", "Stuffles Classic", 39),
+        Product("stuffles-cheesy-pesto", "Cheesy Pesto", "Stuffles Classic", 39),
+        Product("stuffles-truffle-cream", "Truffle Cream", "Stuffles Truffle", 49),
+        Product("stuffles-cheesy-truffle", "Cheesy Truffle", "Stuffles Truffle", 49),
+        Product("stuffles-pesto-truffle", "Pesto Truffle", "Stuffles Truffle", 49),
+        Product("pasta-carbonara", "Carbonara", "La Pasta Signatures", 39),
+        Product("pasta-spaghetti", "Spaghetti", "La Pasta Signatures", 39),
+        Product("pasta-creamy-pesto", "Creamy Pesto", "La Pasta Signatures", 39),
+        Product("pasta-spag-cheese", "Spag & Cheese", "La Pasta Signatures", 39),
+        Product("pasta-cheesy-pesto", "Cheesy Pesto", "La Pasta Signatures", 39),
+        Product("pasta-pesto-truffle", "Pesto Truffle", "La Pasta Truffle", 49),
+        Product("pasta-truffle-cream", "Truffle Cream", "La Pasta Truffle", 49),
+        Product("pasta-cheesy-truffle", "Cheesy Truffle", "La Pasta Truffle", 49)
+    )
+}
