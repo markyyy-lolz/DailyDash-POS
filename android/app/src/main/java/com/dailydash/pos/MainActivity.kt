@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -275,7 +277,7 @@ private fun LoginPanel(
     onRefresh: () -> Unit
 ) {
     Surface(modifier = modifier, color = Color.White) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 30.dp)) {
             Text("Secure Login", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF102A56))
             Text("Select a staff account or sign in with credentials.", color = Color(0xFF718096))
             Spacer(Modifier.height(22.dp))
@@ -498,119 +500,197 @@ private fun ModernPosScreen(
     }
     val cartTotal = cart.sumOf { it.lineTotal }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        containerColor = SoftBg,
-        bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
-                NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
-                NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
-                NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
-                NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wideLayout = maxWidth >= 760.dp
+        val compactHeader = maxWidth < 620.dp
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbar) },
+            containerColor = SoftBg,
+            bottomBar = {
+                if (!wideLayout) {
+                    NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
+                        NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
+                        NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
+                        NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
+                        NavigationBarItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
+                    }
+                }
             }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)
-        ) {
+        ) { padding ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
             ) {
-                DailyDashLogo(Modifier.width(118.dp).height(66.dp))
-                Spacer(Modifier.weight(1f))
-                AssistChip(
-                    onClick = { refresh() },
-                    label = { Text(if (syncing) "Syncing" else if (online) "Cloud online" else "Offline") },
-                    leadingIcon = { Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, null, Modifier.size(17.dp)) }
-                )
-                Spacer(Modifier.width(8.dp))
-                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 2.dp) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        StaffAvatar(session.member, 32)
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
+                if (wideLayout) {
+                    NavigationRail(
+                        containerColor = Color.White,
+                        header = {
+                            DailyDashLogo(
+                                Modifier
+                                    .width(86.dp)
+                                    .height(62.dp)
+                                    .padding(horizontal = 8.dp)
+                            )
                         }
-                        IconButton(onClick = onLogout, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
-                        }
-                    }
-                }
-            }
-
-            OutlinedTextField(
-                value = search,
-                onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                placeholder = { Text("Search menu items...") },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = Color.White,
-                    focusedContainerColor = Color.White,
-                    unfocusedBorderColor = Color.Transparent
-                )
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(categories) { category ->
-                    FilterChip(
-                        selected = selectedCategory == category,
-                        onClick = { selectedCategory = category },
-                        label = { Text(category) },
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(155.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(filtered, key = { it.id }) { product ->
-                    ModernProductCard(product) {
-                        val index = cart.indexOfFirst { it.product.id == product.id && !it.upsized }
-                        cart = if (index >= 0) {
-                            cart.toMutableList().also { list ->
-                                list[index] = list[index].copy(quantity = list[index].quantity + 1)
-                            }
-                        } else cart + CartLine(product)
-                    }
-                }
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFFE8F2FF)
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(44.dp).background(BrandBlue, RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center
                     ) {
-                        Text(cart.sumOf { it.quantity }.toString(), color = Color.White, fontWeight = FontWeight.Black)
+                        NavigationRailItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
+                        NavigationRailItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
+                        NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Inventory is managed in DailyDash Manager.") } }, icon = { Icon(Icons.Default.Inventory2, null) }, label = { Text("Inventory") })
+                        NavigationRailItem(selected = false, onClick = { scope.launch { snackbar.showSnackbar("Reports are available in DailyDash Manager.") } }, icon = { Icon(Icons.Default.ShowChart, null) }, label = { Text("Reports") })
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(cart.sumOf { it.quantity }.toString() + " item(s)", color = Color(0xFF60738F), fontSize = 12.sp)
-                        Text(peso(cartTotal), color = Color(0xFF102A56), fontWeight = FontWeight.Black, fontSize = 22.sp)
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = if (wideLayout) 18.dp else 12.dp)
+                ) {
+                    if (compactHeader) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                DailyDashLogo(Modifier.width(104.dp).height(58.dp))
+                                Spacer(Modifier.weight(1f))
+                                IconButton(onClick = { refresh() }) {
+                                    Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, if (online) "Online" else "Offline", tint = if (online) BrandBlue else Color(0xFF718096))
+                                }
+                                IconButton(onClick = onLogout) {
+                                    Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White,
+                                shadowElevation = 1.dp
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    StaffAvatar(session.member, 30)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
+                                    }
+                                    Text(if (syncing) "Syncing…" else if (online) "Online" else "Offline", color = if (online) BrandBlue else Color(0xFF718096), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!wideLayout) {
+                                DailyDashLogo(Modifier.width(118.dp).height(66.dp))
+                                Spacer(Modifier.weight(1f))
+                            } else {
+                                Text("Point of Sale", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF102A56))
+                                Spacer(Modifier.weight(1f))
+                            }
+                            AssistChip(
+                                onClick = { refresh() },
+                                label = { Text(if (syncing) "Syncing" else if (online) "Cloud online" else "Offline") },
+                                leadingIcon = { Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, null, Modifier.size(17.dp)) }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Surface(shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 2.dp) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    StaffAvatar(session.member, 32)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
+                                    }
+                                    IconButton(onClick = onLogout, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
+                                    }
+                                }
+                            }
+                        }
                     }
-                    Button(
-                        onClick = { showCart = true },
-                        enabled = cart.isNotEmpty(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
-                    ) { Text("View Cart") }
+
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        placeholder = { Text("Search menu items...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedContainerColor = Color.White,
+                            focusedContainerColor = Color.White,
+                            unfocusedBorderColor = Color.Transparent
+                        )
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(categories) { category ->
+                            FilterChip(
+                                selected = selectedCategory == category,
+                                onClick = { selectedCategory = category },
+                                label = { Text(category) },
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(if (wideLayout) 170.dp else 145.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(filtered, key = { it.id }) { product ->
+                            ModernProductCard(product) {
+                                val index = cart.indexOfFirst { it.product.id == product.id && !it.upsized }
+                                cart = if (index >= 0) {
+                                    cart.toMutableList().also { list ->
+                                        list[index] = list[index].copy(quantity = list[index].quantity + 1)
+                                    }
+                                } else cart + CartLine(product)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFE8F2FF)
+                    ) {
+                        Row(Modifier.padding(if (compactHeader) 10.dp else 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(if (compactHeader) 38.dp else 44.dp).background(BrandBlue, RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(cart.sumOf { it.quantity }.toString(), color = Color.White, fontWeight = FontWeight.Black)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(cart.sumOf { it.quantity }.toString() + " item(s)", color = Color(0xFF60738F), fontSize = 11.sp)
+                                Text(peso(cartTotal), color = Color(0xFF102A56), fontWeight = FontWeight.Black, fontSize = if (compactHeader) 19.sp else 22.sp)
+                            }
+                            Button(
+                                onClick = { showCart = true },
+                                enabled = cart.isNotEmpty(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue)
+                            ) { Text(if (compactHeader) "Cart" else "View Cart") }
+                        }
+                    }
                 }
             }
         }
