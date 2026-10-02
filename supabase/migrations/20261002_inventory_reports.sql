@@ -417,3 +417,17 @@ $$;
 
 revoke all on function public.dailydash_create_order(jsonb,text,integer,text) from public;
 grant execute on function public.dailydash_create_order(jsonb,text,integer,text) to anon, authenticated;
+
+
+-- Security hardening: Supabase projects may have explicit EXECUTE grants
+-- for anon/authenticated from default privileges, so revoke them directly.
+-- Public POS RPCs (dailydash_create_order and dailydash_get_pos_products)
+-- intentionally remain callable by the publishable-key client.
+-- lock down manager-only RPCs
+revoke execute on function public.dailydash_set_inventory(text,integer,integer,boolean,text) from anon, authenticated;
+revoke execute on function public.dailydash_void_order(uuid) from anon, authenticated;
+revoke execute on function public.dailydash_report(timestamptz,timestamptz) from anon, authenticated;
+
+grant execute on function public.dailydash_set_inventory(text,integer,integer,boolean,text) to service_role;
+grant execute on function public.dailydash_void_order(uuid) to service_role;
+grant execute on function public.dailydash_report(timestamptz,timestamptz) to service_role;
