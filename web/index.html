@@ -14,7 +14,9 @@
       <nav>
         <button class="nav active" data-view="dashboard">▦ Dashboard</button>
         <button class="nav" data-view="menu">☰ Menu</button>
+        <button class="nav" data-view="inventory">▣ Inventory</button>
         <button class="nav" data-view="orders">▤ Orders</button>
+        <button class="nav" data-view="reports">▥ Reports</button>
         <button class="nav" data-view="settings">⚙ Settings</button>
       </nav>
       <div class="side-foot">
@@ -31,14 +33,15 @@
 
       <section id="dashboard" class="view active-view">
         <div class="hero">
-          <div><span class="eyebrow">DAILYDASH CLOUD POS</span><h2>Today at a glance.</h2><p>Android POS transactions are synchronized through Supabase.</p></div>
+          <div><span class="eyebrow">DAILYDASH CLOUD POS</span><h2>Today at a glance.</h2><p>Sales, stock, and menu changes stay synchronized through Supabase.</p></div>
           <div class="hero-mark">DD</div>
         </div>
-        <div class="stats">
+        <div class="stats stats-five">
           <article><span>Sales today</span><strong id="salesToday">₱0</strong><small>Completed orders</small></article>
           <article><span>Orders today</span><strong id="ordersToday">0</strong><small>Cloud transactions</small></article>
           <article><span>Average order</span><strong id="avgOrder">₱0</strong><small>Average ticket</small></article>
           <article><span>Menu items</span><strong id="menuCount">0</strong><small>Products in Supabase</small></article>
+          <article class="clickable-stat" data-jump="inventory"><span>Low stock</span><strong id="lowStockCount">0</strong><small id="outStockText">0 out of stock</small></article>
         </div>
         <div class="two">
           <article class="panel"><div class="panel-head"><div><h3>Payment mix</h3><p>Today’s completed sales</p></div></div><div id="tenderStats"></div></article>
@@ -47,14 +50,64 @@
       </section>
 
       <section id="menu" class="view">
-        <div class="section-head"><div><h2>Menu management</h2><p>Update cloud prices and availability.</p></div><input id="menuSearch" class="search" placeholder="Search menu..."></div>
+        <div class="section-head"><div><h2>Menu management</h2><p>Update cloud prices and product availability.</p></div><input id="menuSearch" class="search" placeholder="Search menu..."></div>
         <div id="menuFilters" class="filters"></div>
         <div id="menuGrid" class="menu-grid"></div>
+      </section>
+
+      <section id="inventory" class="view">
+        <div class="section-head">
+          <div><h2>Inventory</h2><p>Track finished-item stock. Completed sales deduct stock automatically; voided sales restore it.</p></div>
+          <input id="inventorySearch" class="search" placeholder="Search inventory...">
+        </div>
+        <div class="stats inventory-stats">
+          <article><span>Tracked items</span><strong id="trackedItems">0</strong><small>Stock tracking enabled</small></article>
+          <article><span>Total units</span><strong id="totalUnits">0</strong><small>Across tracked items</small></article>
+          <article><span>Low stock</span><strong id="inventoryLow">0</strong><small>At or below alert level</small></article>
+          <article><span>Out of stock</span><strong id="inventoryOut">0</strong><small>Unavailable for checkout</small></article>
+        </div>
+        <article class="panel table-panel inventory-panel"><div id="inventoryTable"></div></article>
+        <article class="panel movements-panel">
+          <div class="panel-head"><div><h3>Recent stock movements</h3><p>Sales, void restocks, and manual adjustments</p></div></div>
+          <div id="movementTable"></div>
+        </article>
       </section>
 
       <section id="orders" class="view">
         <div class="section-head"><div><h2>Orders</h2><p>Transactions from all DailyDash POS devices.</p></div><button id="reloadOrders" class="secondary">Reload orders</button></div>
         <article class="panel table-panel"><div id="ordersTable"></div></article>
+      </section>
+
+      <section id="reports" class="view">
+        <div class="section-head report-head">
+          <div><h2>Sales reports</h2><p>Generate date-range sales, product, category, and payment summaries.</p></div>
+          <div class="report-controls">
+            <label>From <input id="reportStart" type="date"></label>
+            <label>To <input id="reportEnd" type="date"></label>
+            <button id="runReport" class="primary">Generate</button>
+            <button id="exportReport" class="secondary">Export CSV</button>
+          </div>
+        </div>
+        <div class="quick-range">
+          <button class="filter" data-range="today">Today</button>
+          <button class="filter" data-range="7">Last 7 days</button>
+          <button class="filter" data-range="30">Last 30 days</button>
+        </div>
+        <div class="stats report-stats">
+          <article><span>Total sales</span><strong id="reportSales">₱0</strong><small>Completed orders</small></article>
+          <article><span>Orders</span><strong id="reportOrders">0</strong><small>Completed transactions</small></article>
+          <article><span>Average order</span><strong id="reportAvg">₱0</strong><small>Average ticket</small></article>
+          <article><span>Items sold</span><strong id="reportItems">0</strong><small>Product units</small></article>
+          <article><span>Voided</span><strong id="reportVoided">0</strong><small>Voided transactions</small></article>
+        </div>
+        <div class="two report-two">
+          <article class="panel"><div class="panel-head"><div><h3>Payment breakdown</h3><p>Revenue by tender</p></div></div><div id="reportTender"></div></article>
+          <article class="panel"><div class="panel-head"><div><h3>Category sales</h3><p>Revenue and units by category</p></div></div><div id="reportCategories"></div></article>
+        </div>
+        <div class="two report-two">
+          <article class="panel table-panel"><div class="panel-title-pad"><h3>Daily sales</h3></div><div id="dailyReportTable"></div></article>
+          <article class="panel table-panel"><div class="panel-title-pad"><h3>Top products</h3></div><div id="topProductsTable"></div></article>
+        </div>
       </section>
 
       <section id="settings" class="view">
@@ -65,6 +118,7 @@
             <div class="info"><span>Project</span><b>cpodvrwykhkndtwcsmgp</b></div>
             <div class="info"><span>Region</span><b>Singapore</b></div>
             <div class="info"><span>Admin API</span><b>dailydash-admin</b></div>
+            <div class="info"><span>Inventory</span><b>Automatic deduction</b></div>
           </article>
           <article class="panel">
             <h3>Change manager PIN</h3>
