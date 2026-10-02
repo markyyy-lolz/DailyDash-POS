@@ -40,6 +40,12 @@ data class CloudOrderResult(
     val createdAt: String
 )
 
+data class CompletedSale(
+    val result: CloudOrderResult,
+    val lines: List<CartLine>,
+    val staff: StaffMember
+)
+
 data class OrderRecord(
     val id: String,
     val orderNo: String,
