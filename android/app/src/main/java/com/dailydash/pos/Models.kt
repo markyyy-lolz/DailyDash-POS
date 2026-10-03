@@ -40,6 +40,12 @@ data class PaymentPart(
     val referenceNo: String? = null
 )
 
+data class DiscountPreview(
+    val label: String?,
+    val discountTotal: Int,
+    val total: Int
+)
+
 data class ShiftInfo(
     val id: String,
     val openingCash: Int,
