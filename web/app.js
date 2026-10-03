@@ -333,12 +333,20 @@ async function loadReport(){
 }
 
 function renderReport(){
-  const r=state.report||{sales:0,orders:0,average_order:0,items_sold:0,voided_orders:0,tenders:[],categories:[],daily:[],top_products:[]};
+  const r=state.report||{
+    sales:0,orders:0,average_order:0,items_sold:0,voided_orders:0,
+    discount_total:0,refund_total:0,expenses:0,estimated_cogs:0,estimated_net:0,
+    tenders:[],categories:[],daily:[],hourly:[],staff_sales:[],ingredient_usage:[],top_products:[]
+  };
   $('#reportSales').textContent=money(r.sales);
   $('#reportOrders').textContent=Number(r.orders||0).toLocaleString();
   $('#reportAvg').textContent=money(r.average_order);
   $('#reportItems').textContent=Number(r.items_sold||0).toLocaleString();
   $('#reportVoided').textContent=Number(r.voided_orders||0).toLocaleString();
+  $('#reportDiscounts').textContent=money(r.discount_total);
+  $('#reportRefunds').textContent=money(r.refund_total);
+  $('#reportExpenses').textContent=money(r.expenses);
+  $('#reportNet').textContent=money(r.estimated_net);
 
   $('#reportTender').innerHTML=(r.tenders||[]).length?
     '<div class="report-list">'+r.tenders.map(t=>
@@ -352,7 +360,7 @@ function renderReport(){
 
   $('#dailyReportTable').innerHTML=(r.daily||[]).length?
     '<table><thead><tr><th>Date</th><th>Orders</th><th>Sales</th></tr></thead><tbody>'+
-    r.daily.map(d=>'<tr><td>'+escapeHtml(d.day)+'</td><td>'+Number(d.orders||0)+'</td><td><b>'+money(d.sales)+'</b></td></tr>').join('')+
+    r.daily.map(d=>'<tr><td>'+escapeHtml(d.sale_day||d.day)+'</td><td>'+Number(d.orders||0)+'</td><td><b>'+money(d.sales)+'</b></td></tr>').join('')+
     '</tbody></table>':'<div class="empty">No daily sales for this range.</div>';
 
   $('#topProductsTable').innerHTML=(r.top_products||[]).length?
@@ -360,6 +368,30 @@ function renderReport(){
     r.top_products.map(p=>
       '<tr><td><b>'+escapeHtml(p.product_name)+'</b><br><small>'+escapeHtml(p.category)+'</small></td><td>'+Number(p.quantity||0)+'</td><td><b>'+money(p.revenue)+'</b></td></tr>'
     ).join('')+'</tbody></table>':'<div class="empty">No product sales for this range.</div>';
+
+  $('#hourlyReportTable').innerHTML=(r.hourly||[]).length?
+    '<table><thead><tr><th>Hour</th><th>Orders</th><th>Sales</th></tr></thead><tbody>'+
+    r.hourly.map(x=>'<tr><td>'+String(x.sale_hour).padStart(2,'0')+':00</td><td>'+Number(x.orders||0)+'</td><td><b>'+money(x.sales)+'</b></td></tr>').join('')+
+    '</tbody></table>':'<div class="empty">No hourly sales for this range.</div>';
+
+  $('#staffSalesTable').innerHTML=(r.staff_sales||[]).length?
+    '<table><thead><tr><th>Staff</th><th>Role</th><th>Orders</th><th>Sales</th></tr></thead><tbody>'+
+    r.staff_sales.map(x=>'<tr><td><b>'+escapeHtml(x.staff_name)+'</b></td><td>'+escapeHtml(x.role)+'</td><td>'+Number(x.orders||0)+'</td><td><b>'+money(x.sales)+'</b></td></tr>').join('')+
+    '</tbody></table>':'<div class="empty">No staff sales for this range.</div>';
+
+  $('#ingredientUsageTable').innerHTML=(r.ingredient_usage||[]).length?
+    '<table><thead><tr><th>Ingredient</th><th>Used</th><th>Unit</th></tr></thead><tbody>'+
+    r.ingredient_usage.map(x=>'<tr><td><b>'+escapeHtml(x.name)+'</b></td><td>'+Number(x.used_qty||0).toLocaleString()+'</td><td>'+escapeHtml(x.unit)+'</td></tr>').join('')+
+    '</tbody></table>':'<div class="empty">No recipe usage recorded yet.</div>';
+
+  $('#profitEstimate').innerHTML=
+    '<div class="report-list">'+
+      '<div class="report-line"><div><b>Gross sales</b></div><strong>'+money(r.sales)+'</strong></div>'+
+      '<div class="report-line"><div><b>Refunds</b></div><strong>-'+money(r.refund_total)+'</strong></div>'+
+      '<div class="report-line"><div><b>Recorded expenses</b></div><strong>-'+money(r.expenses)+'</strong></div>'+
+      '<div class="report-line"><div><b>Estimated ingredient COGS</b></div><strong>-'+money(r.estimated_cogs)+'</strong></div>'+
+      '<div class="report-line"><div><b>Estimated net</b><small>Estimate only; depends on recipe/cost setup</small></div><strong>'+money(r.estimated_net)+'</strong></div>'+
+    '</div>';
 }
 
 function csvCell(value){
@@ -381,6 +413,11 @@ function exportReport(){
     ['Average Order',r.average_order],
     ['Items Sold',r.items_sold],
     ['Voided Orders',r.voided_orders],
+    ['Discounts',r.discount_total],
+    ['Refunds',r.refund_total],
+    ['Expenses',r.expenses],
+    ['Estimated COGS',r.estimated_cogs],
+    ['Estimated Net',r.estimated_net],
     [],
     ['Payment','Orders','Total'],
     ...(r.tenders||[]).map(x=>[x.tender,x.orders,x.total]),
@@ -389,7 +426,16 @@ function exportReport(){
     ...(r.categories||[]).map(x=>[x.category,x.quantity,x.revenue]),
     [],
     ['Date','Orders','Sales'],
-    ...(r.daily||[]).map(x=>[x.day,x.orders,x.sales]),
+    ...(r.daily||[]).map(x=>[x.sale_day||x.day,x.orders,x.sales]),
+    [],
+    ['Hour','Orders','Sales'],
+    ...(r.hourly||[]).map(x=>[x.sale_hour,x.orders,x.sales]),
+    [],
+    ['Staff','Role','Orders','Sales'],
+    ...(r.staff_sales||[]).map(x=>[x.staff_name,x.role,x.orders,x.sales]),
+    [],
+    ['Ingredient','Used','Unit'],
+    ...(r.ingredient_usage||[]).map(x=>[x.name,x.used_qty,x.unit]),
     [],
     ['Top Product','Category','Quantity','Revenue'],
     ...(r.top_products||[]).map(x=>[x.product_name,x.category,x.quantity,x.revenue])
