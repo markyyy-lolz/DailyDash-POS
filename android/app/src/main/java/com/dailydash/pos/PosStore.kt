@@ -53,13 +53,21 @@ class PosStore(context: Context) {
         payments: List<PaymentPart>,
         discountCode: String?,
         customerName: String?,
+        customerPhone: String?,
+        redeemPoints: Int,
+        orderType: String,
+        tableNo: String?,
         notes: String?
     ): PendingSale = PendingSale(
         localId = "offline-" + UUID.randomUUID().toString(),
-        lines = lines.map { it.copy() },
+        lines = lines.map { it.copy(modifiers = it.modifiers.map { m -> m.copy() }) },
         payments = payments.map { it.copy() },
         discountCode = discountCode,
         customerName = customerName,
+        customerPhone = customerPhone,
+        redeemPoints = redeemPoints,
+        orderType = orderType,
+        tableNo = tableNo,
         notes = notes
     )
 
@@ -90,6 +98,10 @@ class PosStore(context: Context) {
         put("localId", sale.localId)
         put("discountCode", sale.discountCode ?: JSONObject.NULL)
         put("customerName", sale.customerName ?: JSONObject.NULL)
+        put("customerPhone", sale.customerPhone ?: JSONObject.NULL)
+        put("redeemPoints", sale.redeemPoints)
+        put("orderType", sale.orderType)
+        put("tableNo", sale.tableNo ?: JSONObject.NULL)
         put("notes", sale.notes ?: JSONObject.NULL)
         put("createdAt", sale.createdAt)
 
@@ -119,6 +131,25 @@ class PosStore(context: Context) {
                         put("sortOrder", line.product.sortOrder)
                         put("imageUrl", line.product.imageUrl ?: JSONObject.NULL)
                     })
+                    put("modifiers", JSONArray().apply {
+                        line.modifiers.forEach { selected ->
+                            put(JSONObject().apply {
+                                put("quantity", selected.quantity)
+                                put("option", JSONObject().apply {
+                                    put("id", selected.option.id)
+                                    put("productId", selected.option.productId)
+                                    put("groupName", selected.option.groupName)
+                                    put("groupType", selected.option.groupType)
+                                    put("name", selected.option.name)
+                                    put("priceDelta", selected.option.priceDelta)
+                                    put("isDefault", selected.option.isDefault)
+                                    put("required", selected.option.required)
+                                    put("maxSelect", selected.option.maxSelect)
+                                    put("sortOrder", selected.option.sortOrder)
+                                })
+                            })
+                        }
+                    })
                 })
             }
         })
@@ -129,6 +160,29 @@ class PosStore(context: Context) {
         val lines = (0 until linesJson.length()).map { i ->
             val row = linesJson.getJSONObject(i)
             val p = row.getJSONObject("product")
+            val modifiersJson = row.optJSONArray("modifiers") ?: JSONArray()
+            val selected = (0 until modifiersJson.length()).mapNotNull { mIndex ->
+                runCatching {
+                    val m = modifiersJson.getJSONObject(mIndex)
+                    val optionJson = m.getJSONObject("option")
+                    SelectedModifier(
+                        option = ModifierOption(
+                            id = optionJson.getString("id"),
+                            productId = optionJson.optString("productId", p.getString("id")),
+                            groupName = optionJson.optString("groupName", "Add-ons"),
+                            groupType = optionJson.optString("groupType", "multi"),
+                            name = optionJson.getString("name"),
+                            priceDelta = optionJson.optInt("priceDelta", 0),
+                            isDefault = optionJson.optBoolean("isDefault", false),
+                            required = optionJson.optBoolean("required", false),
+                            maxSelect = optionJson.optInt("maxSelect", 1),
+                            sortOrder = optionJson.optInt("sortOrder", 0)
+                        ),
+                        quantity = m.optInt("quantity", 1).coerceIn(1, 10)
+                    )
+                }.getOrNull()
+            }
+
             CartLine(
                 product = Product(
                     id = p.getString("id"),
@@ -139,10 +193,13 @@ class PosStore(context: Context) {
                     upsizePrice = p.optInt("upsizePrice", 10),
                     available = p.optBoolean("available", true),
                     sortOrder = p.optInt("sortOrder"),
-                    imageUrl = p.optString("imageUrl").takeIf { it.isNotBlank() && it != "null" }
+                    imageUrl = p.optString("imageUrl").takeIf {
+                        it.isNotBlank() && it != "null"
+                    }
                 ),
                 quantity = row.optInt("quantity", 1),
-                upsized = row.optBoolean("upsized", false)
+                upsized = row.optBoolean("upsized", false),
+                modifiers = selected
             )
         }
 
@@ -152,7 +209,9 @@ class PosStore(context: Context) {
             PaymentPart(
                 method = p.getString("method"),
                 amount = p.getInt("amount"),
-                referenceNo = p.optString("referenceNo").takeIf { it.isNotBlank() && it != "null" }
+                referenceNo = p.optString("referenceNo").takeIf {
+                    it.isNotBlank() && it != "null"
+                }
             )
         }
 
@@ -160,9 +219,23 @@ class PosStore(context: Context) {
             localId = o.getString("localId"),
             lines = lines,
             payments = payments,
-            discountCode = o.optString("discountCode").takeIf { it.isNotBlank() && it != "null" },
-            customerName = o.optString("customerName").takeIf { it.isNotBlank() && it != "null" },
-            notes = o.optString("notes").takeIf { it.isNotBlank() && it != "null" },
+            discountCode = o.optString("discountCode").takeIf {
+                it.isNotBlank() && it != "null"
+            },
+            customerName = o.optString("customerName").takeIf {
+                it.isNotBlank() && it != "null"
+            },
+            customerPhone = o.optString("customerPhone").takeIf {
+                it.isNotBlank() && it != "null"
+            },
+            redeemPoints = o.optInt("redeemPoints", 0),
+            orderType = o.optString("orderType", "Takeout"),
+            tableNo = o.optString("tableNo").takeIf {
+                it.isNotBlank() && it != "null"
+            },
+            notes = o.optString("notes").takeIf {
+                it.isNotBlank() && it != "null"
+            },
             createdAt = o.optLong("createdAt", System.currentTimeMillis())
         )
     }
