@@ -92,6 +92,16 @@ data class CompletedSale(
     val staff: StaffMember
 )
 
+data class PendingSale(
+    val localId: String,
+    val lines: List<CartLine>,
+    val payments: List<PaymentPart>,
+    val discountCode: String? = null,
+    val customerName: String? = null,
+    val notes: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class OrderRecord(
     val id: String,
     val orderNo: String,
