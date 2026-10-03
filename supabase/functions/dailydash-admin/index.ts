@@ -885,6 +885,25 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+
+  if (action === "refund_order_admin") {
+    const orderId = String(body.order_id ?? "");
+    const items = Array.isArray(body.items) ? body.items : [];
+    const reason = String(body.reason ?? "").trim();
+    const staffId = body.staff_id ? String(body.staff_id) : null;
+    if (!orderId || !items.length || !reason) {
+      return json({ error: "Order, refund items and reason are required." }, 400);
+    }
+    const { data, error } = await supabase.rpc("dailydash_refund_order_admin", {
+      p_order_id: orderId,
+      p_items: items,
+      p_reason: reason,
+      p_staff_id: staffId,
+    });
+    if (error) return json({ error: error.message }, 400);
+    return json({ refund: data });
+  }
+
   if (action === "change_pin") {
     const newPin = String(body.new_pin ?? "");
     if (!/^\d{6}$/.test(newPin)) {
