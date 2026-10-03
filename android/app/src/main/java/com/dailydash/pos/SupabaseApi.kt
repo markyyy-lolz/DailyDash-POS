@@ -296,7 +296,8 @@ class SupabaseApi {
         manualDiscountLabel: String = "Manual Discount",
         managerPin: String? = null,
         customerName: String? = null,
-        notes: String? = null
+        notes: String? = null,
+        clientRef: String? = null
     ): Result<CloudOrderResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payArray = JSONArray()
@@ -318,6 +319,10 @@ class SupabaseApi {
                 .put("p_payments", payArray)
                 .put("p_device_code", DEVICE_CODE)
                 .put("p_staff_session", staffToken)
+                .put(
+                    "p_client_ref",
+                    clientRef?.takeIf { it.isNotBlank() } ?: JSONObject.NULL
+                )
                 .put(
                     "p_discount_code",
                     discountCode?.takeIf { it.isNotBlank() }
@@ -351,7 +356,7 @@ class SupabaseApi {
                 payload.put("p_manual_discount", JSONObject.NULL)
             }
 
-            val o = JSONObject(rpc("dailydash_create_order_v3", payload))
+            val o = JSONObject(rpc("dailydash_create_order_v4", payload))
             CloudOrderResult(
                 remoteId = o.getString("id"),
                 orderNo = o.getString("order_no"),
@@ -366,6 +371,19 @@ class SupabaseApi {
             )
         }
     }
+
+    suspend fun syncPendingSale(
+        sale: PendingSale,
+        staffToken: String
+    ): Result<CloudOrderResult> = createOrderAdvanced(
+        cart = sale.lines,
+        payments = sale.payments,
+        staffToken = staffToken,
+        discountCode = sale.discountCode,
+        customerName = sale.customerName,
+        notes = sale.notes,
+        clientRef = sale.localId
+    )
 
     suspend fun setPrepStatus(
         staffToken: String,
