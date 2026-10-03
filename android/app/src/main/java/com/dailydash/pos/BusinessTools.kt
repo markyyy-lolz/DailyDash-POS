@@ -32,6 +32,7 @@ fun PosToolsHubDialog(
     onPrinter: () -> Unit,
     onShift: () -> Unit,
     onHeldOrders: () -> Unit,
+    onSoftwareInfo: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -62,6 +63,12 @@ fun PosToolsHubDialog(
                     title = "Held Orders",
                     subtitle = "Resume parked customer orders",
                     onClick = onHeldOrders
+                )
+                ToolCard(
+                    icon = Icons.Default.Info,
+                    title = "Software Information",
+                    subtitle = "Version, creator credits and project details",
+                    onClick = onSoftwareInfo
                 )
                 Surface(
                     color = Color(0xFFF4F8FE),
@@ -708,4 +715,220 @@ fun AdvancedCheckoutDialog(
             TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+
+@Composable
+fun SoftwareInfoDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(30.dp),
+        containerColor = Color.White,
+        title = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .background(Color(0xFFEAF3FF), RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = ToolBlue,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "DailyDash POS",
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF102A56)
+                )
+                Text(
+                    "Commercial Suite • Version 2.0.1",
+                    color = Color(0xFF718096),
+                    fontSize = 12.sp
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    color = Color(0xFF0B66D4),
+                    shape = RoundedCornerShape(22.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp)
+                    ) {
+                        Text(
+                            "CREATOR & LEAD DEVELOPER",
+                            color = Color(0xFFBFDFFF),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Mark Reymuel Pascual",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            "Project Creator • System Designer • Lead Developer",
+                            color = Color(0xFFE6F1FF),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+
+                CreditRow(
+                    icon = Icons.Default.Lightbulb,
+                    title = "Original Concept & Project Direction",
+                    subtitle = "DailyDash POS concept, workflow planning and overall project direction"
+                )
+                CreditRow(
+                    icon = Icons.Default.Palette,
+                    title = "UI / UX Design",
+                    subtitle = "POS interface direction, responsive layouts and DailyDash visual experience"
+                )
+                CreditRow(
+                    icon = Icons.Default.Android,
+                    title = "Android POS Development",
+                    subtitle = "Staff login, checkout, offline queue, shifts, hold orders and transaction workflow"
+                )
+                CreditRow(
+                    icon = Icons.Default.Language,
+                    title = "Web Manager & Operations Center",
+                    subtitle = "Dashboard, inventory, reports, staff management, KDS and customer queue display"
+                )
+                CreditRow(
+                    icon = Icons.Default.Storage,
+                    title = "Backend & Database Integration",
+                    subtitle = "Supabase database design, secure RPC workflows, audit logs and cloud synchronization"
+                )
+                CreditRow(
+                    icon = Icons.Default.Print,
+                    title = "Receipt Printing Integration",
+                    subtitle = "Bluetooth ESC/POS support for VOZY P50 58mm receipt and order-slip printing"
+                )
+                CreditRow(
+                    icon = Icons.Default.Inventory2,
+                    title = "Business Systems Architecture",
+                    subtitle = "Inventory, ingredients, recipes, suppliers, purchases, discounts, refunds and reports"
+                )
+
+                Surface(
+                    color = Color(0xFFF5F8FC),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            "Repository",
+                            color = Color(0xFF718096),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "github.com/markyyy-lolz/DailyDash-POS",
+                            color = Color(0xFF20395E),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Built for DailyDash operations with Android, Jetpack Compose, Supabase and ESC/POS.",
+                            color = Color(0xFF718096),
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                Text(
+                    "DailyDash POS • 2026",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF8A96A8),
+                    fontSize = 10.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+            ) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun CreditRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String
+) {
+    Surface(
+        color = Color(0xFFFAFBFD),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Color(0xFFE5EAF1)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(Color(0xFFEAF3FF), RoundedCornerShape(13.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = ToolBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = Color(0xFF233A5D),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    subtitle,
+                    color = Color(0xFF718096),
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+            }
+        }
+    }
 }
