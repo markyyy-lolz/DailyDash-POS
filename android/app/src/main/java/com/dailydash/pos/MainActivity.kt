@@ -481,7 +481,11 @@ private fun ModernPosScreen(
     var showCart by remember { mutableStateOf(false) }
     var showCheckout by remember { mutableStateOf(false) }
     var showOrders by remember { mutableStateOf(false) }
+    var showSettingsHub by remember { mutableStateOf(false) }
     var showPrinterSettings by remember { mutableStateOf(false) }
+    var showShiftDialog by remember { mutableStateOf(false) }
+    var showHeldOrders by remember { mutableStateOf(false) }
+    var showHoldOrder by remember { mutableStateOf(false) }
     var completedSale by remember { mutableStateOf<CompletedSale?>(null) }
 
     fun refresh() {
@@ -522,7 +526,7 @@ private fun ModernPosScreen(
                     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
                         NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
                         NavigationBarItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
-                        NavigationBarItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
+                        NavigationBarItem(selected = false, onClick = { showSettingsHub = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
                     }
                 }
             }
@@ -546,7 +550,7 @@ private fun ModernPosScreen(
                     ) {
                         NavigationRailItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Storefront, null) }, label = { Text("POS") })
                         NavigationRailItem(selected = false, onClick = { showOrders = true }, icon = { Icon(Icons.Default.ReceiptLong, null) }, label = { Text("Orders") })
-                        NavigationRailItem(selected = false, onClick = { showPrinterSettings = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
+                        NavigationRailItem(selected = false, onClick = { showSettingsHub = true }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
                     }
                 }
 
@@ -569,8 +573,8 @@ private fun ModernPosScreen(
                                 IconButton(onClick = { refresh() }) {
                                     Icon(if (online) Icons.Default.CloudDone else Icons.Default.CloudOff, if (online) "Online" else "Offline", tint = if (online) BrandBlue else Color(0xFF718096))
                                 }
-                                IconButton(onClick = { showPrinterSettings = true }) {
-                                    Icon(Icons.Default.Print, "Printer settings", tint = BrandBlue)
+                                IconButton(onClick = { showSettingsHub = true }) {
+                                    Icon(Icons.Default.Settings, "POS settings", tint = BrandBlue)
                                 }
                                 IconButton(onClick = onLogout) {
                                     Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
@@ -621,8 +625,8 @@ private fun ModernPosScreen(
                                         Text(session.member.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                         Text(session.member.role.replaceFirstChar { it.uppercase() }, color = Color(0xFF718096), fontSize = 10.sp)
                                     }
-                                    IconButton(onClick = { showPrinterSettings = true }, modifier = Modifier.size(34.dp)) {
-                                        Icon(Icons.Default.Print, "Printer settings", tint = BrandBlue)
+                                    IconButton(onClick = { showSettingsHub = true }, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Default.Settings, "POS settings", tint = BrandBlue)
                                     }
                                     IconButton(onClick = onLogout, modifier = Modifier.size(34.dp)) {
                                         Icon(Icons.Default.Logout, "Log out", tint = BrandBlue)
@@ -715,13 +719,14 @@ private fun ModernPosScreen(
             cart = cart,
             onChange = { cart = it },
             onDismiss = { showCart = false },
+            onHold = { showCart = false; showHoldOrder = true },
             onCheckout = { showCart = false; showCheckout = true }
         )
     }
 
     if (showCheckout) {
-        CheckoutDialog(
-            total = cart.sumOf { it.lineTotal },
+        AdvancedCheckoutDialog(
+            grossTotal = cart.sumOf { it.lineTotal },
             itemCount = cart.sumOf { it.quantity },
             api = api,
             cart = cart,
@@ -762,6 +767,58 @@ private fun ModernPosScreen(
             sale = sale,
             printerManager = printerManager,
             onClose = { completedSale = null }
+        )
+    }
+
+    if (showSettingsHub) {
+        PosToolsHubDialog(
+            onPrinter = {
+                showSettingsHub = false
+                showPrinterSettings = true
+            },
+            onShift = {
+                showSettingsHub = false
+                showShiftDialog = true
+            },
+            onHeldOrders = {
+                showSettingsHub = false
+                showHeldOrders = true
+            },
+            onDismiss = { showSettingsHub = false }
+        )
+    }
+
+    if (showShiftDialog) {
+        ShiftDialog(
+            api = api,
+            session = session,
+            onDismiss = { showShiftDialog = false }
+        )
+    }
+
+    if (showHeldOrders) {
+        HeldOrdersDialog(
+            api = api,
+            session = session,
+            onResume = { lines ->
+                cart = lines
+                showHeldOrders = false
+            },
+            onDismiss = { showHeldOrders = false }
+        )
+    }
+
+    if (showHoldOrder) {
+        HoldOrderDialog(
+            api = api,
+            session = session,
+            cart = cart,
+            onHeld = {
+                cart = emptyList()
+                showHoldOrder = false
+                scope.launch { snackbar.showSnackbar("Order held successfully.") }
+            },
+            onDismiss = { showHoldOrder = false }
         )
     }
 
@@ -823,6 +880,7 @@ private fun CartDialog(
     cart: List<CartLine>,
     onChange: (List<CartLine>) -> Unit,
     onDismiss: () -> Unit,
+    onHold: () -> Unit,
     onCheckout: () -> Unit
 ) {
     AlertDialog(
@@ -877,7 +935,16 @@ private fun CartDialog(
                 Text("Checkout • " + peso(cart.sumOf { it.lineTotal }))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Continue ordering") } }
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = onHold) {
+                    Icon(Icons.Default.PauseCircle, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Hold")
+                }
+                TextButton(onClick = onDismiss) { Text("Continue") }
+            }
+        }
     )
 }
 
