@@ -2,7 +2,7 @@ const SUPABASE_URL='https://cpodvrwykhkndtwcsmgp.supabase.co';
 const SUPABASE_KEY='sb_publishable_FeiWv8Dur_Qr3d0LF4RBhw_QSObAAHj';
 const ADMIN_URL=SUPABASE_URL+'/functions/v1/dailydash-admin';
 let pin=sessionStorage.getItem('dd_manager_pin')||'';
-let ingredients=[],suppliers=[],staff=[],products=[],recipes=[],refundOrder=null;
+let ingredients=[],suppliers=[],staff=[],products=[],recipes=[],modifiersV21=[],customersV21=[],wasteV21=[],devicesV21=[],releasesV21=[],refundOrder=null;
 
 const $=s=>document.querySelector(s);
 const $$=s=>Array.from(document.querySelectorAll(s));
@@ -167,9 +167,220 @@ async function loadSettings(){
   $('#setQueue').checked=String(s.queue_enabled)!=='false';
 }
 
+
+async function loadV21Summary(){
+  const d=await admin('v21_summary');
+  $('#sumCustomers').textContent=d.customers||0;
+  $('#sumWaste').textContent=money(d.waste_cost_today||0);
+  $('#sumReorder').textContent=d.reorder_alerts||0;
+  $('#sumDevices').textContent=(d.online_devices||0)+' / '+(d.active_devices||0);
+}
+
+async function loadModifiersV21(){
+  const [m,p,i]=await Promise.all([admin('modifiers'),admin('products'),admin('ingredients')]);
+  modifiersV21=m.modifiers||[];
+  products=p.products||products;
+  ingredients=i.ingredients||ingredients;
+
+  $('#modifierProduct').innerHTML=products.map(x=>
+    '<option value="'+x.id+'">'+esc(x.name)+' — '+esc(x.category)+'</option>'
+  ).join('');
+  $('#modifierIngredient').innerHTML='<option value="">None</option>'+ingredients.map(x=>
+    '<option value="'+x.id+'">'+esc(x.name)+' ('+esc(x.unit)+')</option>'
+  ).join('');
+
+  $('#modifierTable').innerHTML=table(
+    ['Product','Group','Option','Price','Ingredient','Status','Actions'],
+    modifiersV21.map(x=>[
+      '<b>'+esc(x.dailydash_products?.name||x.product_id)+'</b><br><small>'+esc(x.dailydash_products?.category||'')+'</small>',
+      esc(x.group_name)+'<br><small>'+esc(x.group_type)+(x.required?' • required':'')+'</small>',
+      '<b>'+esc(x.name)+'</b>'+(x.is_default?'<br><small>Default</small>':''),
+      (Number(x.price_delta)>=0?'+':'')+money(x.price_delta),
+      x.dailydash_ingredients?.name
+        ? esc(x.dailydash_ingredients.name)+'<br><small>'+Number(x.ingredient_qty||0)+' '+esc(x.dailydash_ingredients.unit||'')+'</small>'
+        : '—',
+      '<span class="status '+(x.active?'':'voided')+'">'+(x.active?'Active':'Disabled')+'</span>',
+      '<div class="actions"><button class="tiny details" data-mod-edit="'+x.id+'">Edit</button>'+
+      '<button class="tiny '+(x.active?'danger':'details')+'" data-mod-toggle="'+x.id+'" data-active="'+(!x.active)+'">'+(x.active?'Disable':'Enable')+'</button>'+
+      '<button class="tiny danger" data-mod-delete="'+x.id+'">Delete</button></div>'
+    ])
+  );
+
+  $$('[data-mod-edit]').forEach(b=>b.onclick=()=>{
+    const x=modifiersV21.find(v=>v.id===b.dataset.modEdit); if(!x)return;
+    $('#modifierId').value=x.id;
+    $('#modifierProduct').value=x.product_id;
+    $('#modifierGroup').value=x.group_name;
+    $('#modifierType').value=x.group_type;
+    $('#modifierName').value=x.name;
+    $('#modifierPrice').value=x.price_delta;
+    $('#modifierMax').value=x.max_select||1;
+    $('#modifierIngredient').value=x.ingredient_id||'';
+    $('#modifierIngredientQty').value=x.ingredient_qty||0;
+    $('#modifierDefault').checked=!!x.is_default;
+    $('#modifierRequired').checked=!!x.required;
+    document.querySelector('[data-tab="modifiers"]').click();
+  });
+
+  $$('[data-mod-toggle]').forEach(b=>b.onclick=async()=>{
+    try{
+      await admin('modifier_toggle',{id:b.dataset.modToggle,active:b.dataset.active==='true'});
+      await loadModifiersV21();toast('Modifier updated');
+    }catch(e){toast(e.message,true)}
+  });
+
+  $$('[data-mod-delete]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Delete this modifier option? Existing order history remains unchanged.'))return;
+    try{
+      await admin('modifier_delete',{id:b.dataset.modDelete});
+      await loadModifiersV21();toast('Modifier deleted');
+    }catch(e){toast(e.message,true)}
+  });
+}
+
+async function loadCustomersV21(q=''){
+  const d=await admin('customers',{q});
+  customersV21=d.customers||[];
+  $('#pointsCustomer').innerHTML=customersV21.map(x=>
+    '<option value="'+x.id+'">'+esc(x.name)+' • '+esc(x.phone)+' • '+Number(x.points_balance||0)+' pts</option>'
+  ).join('');
+
+  $('#customerTable').innerHTML=table(
+    ['Customer','Phone','Tier','Points','Lifetime spend','Actions'],
+    customersV21.map(x=>[
+      '<b>'+esc(x.name)+'</b>'+(x.birthday?'<br><small>Birthday '+esc(x.birthday)+'</small>':''),
+      esc(x.phone),
+      '<span class="pill">'+esc(x.tier||'Member')+'</span>',
+      '<b>'+Number(x.points_balance||0).toLocaleString()+'</b>',
+      money(x.lifetime_spend||0),
+      '<button class="tiny details" data-customer-edit="'+x.id+'">Edit</button>'
+    ])
+  );
+
+  $$('[data-customer-edit]').forEach(b=>b.onclick=()=>{
+    const x=customersV21.find(v=>v.id===b.dataset.customerEdit); if(!x)return;
+    $('#customerId').value=x.id;
+    $('#customerName').value=x.name||'';
+    $('#customerPhone').value=x.phone||'';
+    $('#customerBirthday').value=x.birthday||'';
+    $('#customerNotes').value=x.notes||'';
+  });
+}
+
+function renderWasteItemOptions(){
+  const kind=$('#wasteKind').value;
+  if(kind==='product'){
+    $('#wasteItem').innerHTML=products.map(x=>
+      '<option value="'+x.id+'">'+esc(x.name)+' — '+esc(x.category)+'</option>'
+    ).join('');
+  }else{
+    $('#wasteItem').innerHTML=ingredients.map(x=>
+      '<option value="'+x.id+'">'+esc(x.name)+' ('+esc(x.unit)+')</option>'
+    ).join('');
+  }
+}
+
+async function loadWasteV21(){
+  const [w,p,i,st]=await Promise.all([admin('waste'),admin('products'),admin('ingredients'),admin('staff')]);
+  wasteV21=w.waste||[];
+  products=p.products||products;
+  ingredients=i.ingredients||ingredients;
+  staff=st.staff||staff;
+
+  $('#wasteStaff').innerHTML='<option value="">System / Manager</option>'+staff.filter(x=>x.is_active).map(x=>
+    '<option value="'+x.id+'">'+esc(x.display_name)+'</option>'
+  ).join('');
+  renderWasteItemOptions();
+
+  $('#wasteTable').innerHTML=table(
+    ['Date','Item','Qty','Reason','Cost','Staff','Note'],
+    wasteV21.map(x=>[
+      dt(x.created_at),
+      esc(x.dailydash_ingredients?.name||x.dailydash_products?.name||'Unknown'),
+      Number(x.quantity||0).toLocaleString()+' '+esc(x.unit||''),
+      esc(String(x.reason||'').replaceAll('_',' ')),
+      money(x.estimated_cost||0),
+      esc(x.dailydash_staff?.display_name||'System'),
+      esc(x.note||'')
+    ])
+  );
+}
+
+async function loadReorderV21(){
+  const d=await admin('smart_reorder');
+  const rows=d.suggestions||[];
+  $('#reorderTable').innerHTML=table(
+    ['Ingredient','Stock','Avg/day','Days left','Suggested reorder','Est. cost'],
+    rows.map(x=>[
+      '<b>'+esc(x.name)+'</b><br><small>'+esc(x.unit)+'</small>',
+      Number(x.stock_qty||0).toLocaleString(),
+      Number(x.avg_daily||0).toLocaleString(undefined,{maximumFractionDigits:2}),
+      x.days_remaining==null?'No recent usage':Number(x.days_remaining).toFixed(1)+' days',
+      Number(x.suggested_qty||0)>0
+        ? '<b class="danger-text">'+Number(x.suggested_qty).toLocaleString()+' '+esc(x.unit)+'</b>'
+        : '<span class="status">Enough</span>',
+      money(Math.round(Number(x.suggested_qty||0)*Number(x.cost_per_unit||0)))
+    ])
+  );
+}
+
+async function loadDevicesV21(){
+  const d=await admin('devices');
+  devicesV21=d.devices||[];
+  $('#deviceTable').innerHTML=table(
+    ['Device','Version','Current staff','Last seen','Status','Actions'],
+    devicesV21.map(x=>{
+      const online=Date.now()-new Date(x.last_seen_at).getTime()<10*60*1000;
+      return [
+        '<b>'+esc(x.display_name)+'</b><br><small>'+esc(x.device_code)+'</small>',
+        esc(x.app_version||'Unknown'),
+        esc(x.dailydash_staff?.display_name||'—'),
+        dt(x.last_seen_at)+(online?' <span class="pill">Online</span>':''),
+        '<span class="status '+(x.is_active?'':'voided')+'">'+(x.is_active?'Enabled':'Disabled')+'</span>',
+        '<div class="actions"><button class="tiny details" data-device-rename="'+x.id+'">Rename</button>'+
+        '<button class="tiny '+(x.is_active?'danger':'details')+'" data-device-toggle="'+x.id+'" data-active="'+(!x.is_active)+'">'+(x.is_active?'Disable':'Enable')+'</button></div>'
+      ];
+    })
+  );
+
+  $$('[data-device-toggle]').forEach(b=>b.onclick=async()=>{
+    try{
+      await admin('device_toggle',{id:b.dataset.deviceToggle,active:b.dataset.active==='true'});
+      await loadDevicesV21();toast('Device access updated');
+    }catch(e){toast(e.message,true)}
+  });
+  $$('[data-device-rename]').forEach(b=>b.onclick=async()=>{
+    const x=devicesV21.find(v=>v.id===b.dataset.deviceRename); if(!x)return;
+    const name=prompt('Device name',x.display_name||'DailyDash POS'); if(!name)return;
+    try{
+      await admin('device_save',{id:x.id,display_name:name,notes:x.notes||null});
+      await loadDevicesV21();toast('Device renamed');
+    }catch(e){toast(e.message,true)}
+  });
+}
+
+async function loadReleasesV21(){
+  const d=await admin('app_releases');
+  releasesV21=d.releases||[];
+  $('#releaseTable').innerHTML=table(
+    ['Version','Published','Required','Status','Changelog'],
+    releasesV21.map(x=>[
+      '<b>v'+esc(x.version_name)+'</b><br><small>Code '+Number(x.version_code)+'</small>',
+      dt(x.published_at),
+      x.required?'<span class="status low">Required</span>':'Optional',
+      x.active?'<span class="status">Active</span>':'Disabled',
+      '<small>'+esc(x.changelog||'')+'</small>'
+    ])
+  );
+}
+
 async function loadAll(){
   try{
-    await Promise.all([loadSummary(),loadDiscounts(),loadIngredients(),loadSuppliers(),loadExpenses(),loadShifts(),loadAudit(),loadSettings()]);
+    await Promise.all([
+      loadSummary(),loadV21Summary(),loadDiscounts(),loadModifiersV21(),loadCustomersV21(),
+      loadIngredients(),loadSuppliers(),loadExpenses(),loadWasteV21(),loadReorderV21(),
+      loadDevicesV21(),loadReleasesV21(),loadShifts(),loadAudit(),loadSettings()
+    ]);
   }catch(e){toast(e.message,true)}
 }
 
@@ -178,6 +389,107 @@ $$('.ops-tab').forEach(b=>b.onclick=()=>{
   $$('.ops-panel').forEach(x=>x.classList.remove('active'));$('#'+b.dataset.tab).classList.add('active');
 });
 $('#opsRefresh').onclick=loadAll;
+
+
+$('#modifierForm').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    await admin('modifier_save',{
+      id:$('#modifierId').value||null,
+      product_id:$('#modifierProduct').value,
+      group_name:$('#modifierGroup').value,
+      group_type:$('#modifierType').value,
+      name:$('#modifierName').value,
+      price_delta:Number($('#modifierPrice').value||0),
+      max_select:Number($('#modifierMax').value||1),
+      ingredient_id:$('#modifierIngredient').value||null,
+      ingredient_qty:Number($('#modifierIngredientQty').value||0),
+      is_default:$('#modifierDefault').checked,
+      required:$('#modifierRequired').checked,
+      active:true
+    });
+    $('#modifierId').value='';
+    $('#modifierName').value='';
+    $('#modifierPrice').value='0';
+    $('#modifierIngredientQty').value='0';
+    $('#modifierDefault').checked=false;
+    await loadModifiersV21();
+    toast('Modifier saved');
+  }catch(err){toast(err.message,true)}
+};
+
+$('#customerForm').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    await admin('customer_save',{
+      id:$('#customerId').value||null,
+      name:$('#customerName').value,
+      phone:$('#customerPhone').value,
+      birthday:$('#customerBirthday').value||null,
+      notes:$('#customerNotes').value||null,
+      active:true
+    });
+    e.target.reset();$('#customerId').value='';
+    await loadCustomersV21();
+    toast('Customer saved');
+  }catch(err){toast(err.message,true)}
+};
+
+$('#pointsForm').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    await admin('loyalty_adjust',{
+      customer_id:$('#pointsCustomer').value,
+      points_change:Number($('#pointsChange').value||0),
+      note:$('#pointsNote').value||'Manager adjustment'
+    });
+    $('#pointsChange').value='';$('#pointsNote').value='';
+    await loadCustomersV21($('#customerSearch').value);
+    toast('Loyalty points updated');
+  }catch(err){toast(err.message,true)}
+};
+
+$('#customerSearch').oninput=()=>{
+  clearTimeout(window.ddCustomerSearchTimer);
+  window.ddCustomerSearchTimer=setTimeout(()=>loadCustomersV21($('#customerSearch').value).catch(e=>toast(e.message,true)),250);
+};
+
+$('#wasteKind').onchange=renderWasteItemOptions;
+$('#wasteForm').onsubmit=async e=>{
+  e.preventDefault();
+  const kind=$('#wasteKind').value;
+  try{
+    await admin('waste_save',{
+      staff_id:$('#wasteStaff').value||null,
+      ingredient_id:kind==='ingredient'?$('#wasteItem').value:null,
+      product_id:kind==='product'?$('#wasteItem').value:null,
+      quantity:Number($('#wasteQty').value||0),
+      reason:$('#wasteReason').value,
+      note:$('#wasteNote').value||null
+    });
+    $('#wasteQty').value='';$('#wasteNote').value='';
+    await Promise.all([loadWasteV21(),loadIngredients(),loadReorderV21(),loadV21Summary()]);
+    toast('Waste recorded');
+  }catch(err){toast(err.message,true)}
+};
+
+$('#reorderRefresh').onclick=()=>loadReorderV21().catch(e=>toast(e.message,true));
+
+$('#releaseForm').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    await admin('app_release_save',{
+      version_code:Number($('#releaseCode').value),
+      version_name:$('#releaseName').value,
+      update_url:$('#releaseUrl').value||null,
+      changelog:$('#releaseChangelog').value,
+      required:$('#releaseRequired').checked,
+      active:$('#releaseActive').checked
+    });
+    await loadReleasesV21();
+    toast('Release metadata published');
+  }catch(err){toast(err.message,true)}
+};
 
 $('#discountForm').onsubmit=async e=>{
   e.preventDefault();
