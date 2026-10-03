@@ -157,11 +157,13 @@ Deno.serve(async (req: Request) => {
         failures: failures >= 5 ? 0 : failures,
         blocked_until:
           failures >= 5
-            ? new Date(Date.now() + 10 * 60 * 1000).toISOString()
+            ? new Date(Date.now() + 2 * 60 * 1000).toISOString()
             : null,
         updated_at: new Date().toISOString(),
       });
-      return json({ error: "Invalid staff login." }, 401);
+      return failures >= 5
+        ? json({ error: "Too many failed staff logins. Locked for 2 minutes." }, 429)
+        : json({ error: "Invalid staff login. " + (5 - failures) + " attempt(s) remaining." }, 401);
     }
 
     await supabase.from("dailydash_admin_attempts").delete().eq("fingerprint", loginKey);
@@ -240,7 +242,7 @@ Deno.serve(async (req: Request) => {
     const failures = Number(attempt?.failures ?? 0) + 1;
     const blockedUntil =
       failures >= 5
-        ? new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        ? new Date(Date.now() + 2 * 60 * 1000).toISOString()
         : null;
 
     await supabase.from("dailydash_admin_attempts").upsert({
