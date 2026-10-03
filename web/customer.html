@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DailyDash Queue</title>
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:linear-gradient(135deg,#075dbe,#0b77e9);color:#fff;min-height:100vh;display:grid;grid-template-rows:auto 1fr}header{padding:24px 30px;display:flex;align-items:center;gap:18px}header img{width:150px;filter:brightness(0) invert(1)}
+main{display:grid;grid-template-columns:1fr 1fr;gap:22px;padding:10px 28px 30px}.box{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:28px;padding:24px;backdrop-filter:blur(8px)}h1{margin:0;font-size:34px}.box h2{font-size:18px;opacity:.85;margin-top:0}.nums{display:flex;flex-wrap:wrap;gap:16px}.num{background:#fff;color:#075dbe;min-width:120px;text-align:center;padding:18px;border-radius:22px;font-size:44px;font-weight:950}.ready .num{background:#dff8e9;color:#087a45}@media(max-width:700px){main{grid-template-columns:1fr}.num{font-size:34px;min-width:95px}}
+</style></head>
+<body><header><img src="assets/dailydash-logo.svg"><div><h1>Your order is on the way.</h1><div style="opacity:.8">DailyDash Paombong</div></div></header>
+<main><section class="box"><h2>PREPARING</h2><div id="preparing" class="nums"></div></section><section class="box ready"><h2>READY FOR PICKUP</h2><div id="ready" class="nums"></div></section></main>
+<script src="customer.js"></script></body></html>
