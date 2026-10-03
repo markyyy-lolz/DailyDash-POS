@@ -2,7 +2,7 @@ const SUPABASE_URL='https://cpodvrwykhkndtwcsmgp.supabase.co';
 const SUPABASE_KEY='sb_publishable_FeiWv8Dur_Qr3d0LF4RBhw_QSObAAHj';
 const ADMIN_URL=SUPABASE_URL+'/functions/v1/dailydash-admin';
 let pin=sessionStorage.getItem('dd_manager_pin')||'';
-let ingredients=[],suppliers=[],staff=[];
+let ingredients=[],suppliers=[],staff=[],refundOrder=null;
 
 const $=s=>document.querySelector(s);
 const $$=s=>Array.from(document.querySelectorAll(s));
@@ -90,7 +90,9 @@ async function loadSuppliers(){
   const [s,p,st]=await Promise.all([admin('suppliers'),admin('purchases'),admin('staff')]);
   suppliers=s.suppliers||[]; staff=st.staff||[];
   $('#purchaseSupplier').innerHTML='<option value="">No supplier</option>'+suppliers.filter(x=>x.active).map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');
-  $('#purchaseStaff').innerHTML='<option value="">System</option>'+staff.filter(x=>x.is_active).map(x=>'<option value="'+x.id+'">'+esc(x.display_name)+'</option>').join('');
+  const staffOptions='<option value="">Use original cashier</option>'+staff.filter(x=>x.is_active).map(x=>'<option value="'+x.id+'">'+esc(x.display_name)+'</option>').join('');
+  $('#purchaseStaff').innerHTML=staffOptions.replace('Use original cashier','System');
+  $('#refundStaff').innerHTML=staffOptions;
   $('#supplierTable').innerHTML=table(['Supplier','Contact','Phone'],suppliers.map(x=>[
     '<b>'+esc(x.name)+'</b>',esc(x.contact_name||''),esc(x.phone||'')
   ]));
@@ -224,6 +226,50 @@ $('#businessSettingsForm').onsubmit=async e=>{
       require_open_shift:String($('#setRequireShift').checked),queue_enabled:String($('#setQueue').checked)
     }});
     toast('Business settings saved');
+  }catch(err){toast(err.message,true)}
+};
+
+
+$('#refundLoadBtn').onclick=async()=>{
+  const id=$('#refundOrderId').value.trim();
+  if(!id){toast('Enter an order UUID.',true);return}
+  try{
+    const d=await admin('order_details',{order_id:id});
+    refundOrder=d;
+    const order=d.order,items=d.items||[];
+    $('#refundDetails').innerHTML=
+      '<div class="info"><span>Order</span><b>'+esc(order.order_no)+'</b></div>'+
+      '<div class="info"><span>Total</span><b>'+money(order.total)+'</b></div>'+
+      '<div class="info"><span>Status</span><b>'+esc(order.status)+'</b></div>'+
+      '<div style="margin-top:10px">'+items.map(i=>
+        '<label style="display:grid;grid-template-columns:auto 1fr 90px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">'+
+        '<input type="checkbox" class="refund-item-check" data-id="'+i.id+'" data-max="'+i.quantity+'">'+
+        '<span><b>'+esc(i.product_name)+'</b><br><small>'+money(i.unit_price)+' each • sold '+i.quantity+'</small></span>'+
+        '<input type="number" class="refund-item-qty" data-id="'+i.id+'" min="1" max="'+i.quantity+'" value="1">'+
+        '</label>'
+      ).join('')+'</div>';
+    toast('Order loaded');
+  }catch(e){refundOrder=null;$('#refundDetails').innerHTML='';toast(e.message,true)}
+};
+
+$('#refundForm').onsubmit=async e=>{
+  e.preventDefault();
+  if(!refundOrder){toast('Load an order first.',true);return}
+  const selected=$('.refund-item-check:checked').map(ch=>{
+    const qty=document.querySelector('.refund-item-qty[data-id="'+ch.dataset.id+'"]');
+    return {order_item_id:ch.dataset.id,quantity:Number(qty?.value||1)};
+  });
+  if(!selected.length){toast('Select at least one item to refund.',true);return}
+  try{
+    const d=await admin('refund_order_admin',{
+      order_id:refundOrder.order.id,
+      items:selected,
+      reason:$('#refundReason').value.trim(),
+      staff_id:$('#refundStaff').value||null
+    });
+    toast('Refund processed: '+money(d.refund?.amount||0));
+    refundOrder=null;$('#refundDetails').innerHTML='';$('#refundReason').value='';$('#refundOrderId').value='';
+    await Promise.all([loadSummary(),loadAudit(),loadIngredients()]);
   }catch(err){toast(err.message,true)}
 };
 
