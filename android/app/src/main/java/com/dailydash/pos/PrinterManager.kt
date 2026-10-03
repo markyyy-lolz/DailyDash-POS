@@ -192,6 +192,10 @@ class PrinterManager(private val context: Context) {
         left(out)
         text(out, divider(width) + "\n")
         text(out, fitPair("Cashier", sale.staff.displayName, width) + "\n")
+        text(out, fitPair("Order type", sale.result.orderType, width) + "\n")
+        if (!sale.result.tableNo.isNullOrBlank()) {
+            text(out, fitPair("Table", sale.result.tableNo ?: "", width) + "\n")
+        }
         text(out, fitPair("Payment", sale.result.tender, width) + "\n")
         text(out, divider(width) + "\n")
 
@@ -202,6 +206,18 @@ class PrinterManager(private val context: Context) {
 
             wrap(label, width).forEach {
                 text(out, it + "\n")
+            }
+
+            if (line.modifiers.isNotEmpty()) {
+                line.modifiers.forEach { selected ->
+                    val prefix = if (selected.quantity > 1)
+                        "   +" + selected.quantity + "x "
+                    else
+                        "   +"
+                    wrap(prefix + selected.option.name, width).forEach {
+                        text(out, it + "\n")
+                    }
+                }
             }
 
             text(
@@ -225,12 +241,40 @@ class PrinterManager(private val context: Context) {
                 fitPair("Discount", "-PHP " + sale.result.discountTotal, width) + "\n"
             )
         }
+        if (sale.result.loyaltyRedeemed > 0) {
+            text(
+                out,
+                fitPair(
+                    "Points redeemed",
+                    sale.result.loyaltyRedeemed.toString(),
+                    width
+                ) + "\n"
+            )
+        }
         bold(out, true)
         text(
             out,
             fitPair("TOTAL", "PHP " + sale.result.total, width) + "\n"
         )
         bold(out, false)
+        if (sale.result.loyaltyEarned > 0) {
+            text(
+                out,
+                fitPair(
+                    "Points earned",
+                    sale.result.loyaltyEarned.toString(),
+                    width
+                ) + "\n"
+            )
+            text(
+                out,
+                fitPair(
+                    "Points balance",
+                    sale.result.loyaltyBalance.toString(),
+                    width
+                ) + "\n"
+            )
+        }
 
         if (sale.result.tender == "Cash") {
             text(
@@ -283,6 +327,10 @@ class PrinterManager(private val context: Context) {
 
         left(out)
         text(out, "Cashier: " + sale.staff.displayName + "\n")
+        text(out, "Type: " + sale.result.orderType + "\n")
+        if (!sale.result.tableNo.isNullOrBlank()) {
+            text(out, "Table: " + sale.result.tableNo + "\n")
+        }
         text(out, divider(width) + "\n")
 
         sale.lines.forEach { line ->
@@ -297,6 +345,15 @@ class PrinterManager(private val context: Context) {
 
             if (line.upsized) {
                 text(out, "   *** UPSIZED ***\n")
+            }
+            line.modifiers.forEach { selected ->
+                val qty = if (selected.quantity > 1)
+                    selected.quantity.toString() + "x "
+                else
+                    ""
+                wrap("   + " + qty + selected.option.name, width).forEach {
+                    text(out, it + "\n")
+                }
             }
             text(out, "   " + line.product.category + "\n")
             text(out, "\n")
