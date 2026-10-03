@@ -65,6 +65,19 @@ class SupabaseApi {
         }
     }
 
+    suspend fun loadReceiptBranding(): Result<ReceiptBranding> = withContext(Dispatchers.IO) {
+        runCatching {
+            val o = JSONObject(rpc("dailydash_pos_receipt_settings", JSONObject()))
+            ReceiptBranding(
+                storeName = o.optString("store_name", "DailyDash"),
+                branchName = o.optString("branch_name", "DailyDash - Paombong"),
+                address = o.optString("receipt_address", "Paombong, Bulacan"),
+                phone = o.optString("receipt_phone", ""),
+                footer = o.optString("receipt_footer", "Thank you for choosing DailyDash!")
+            )
+        }
+    }
+
     suspend fun loadProducts(): Result<List<Product>> = withContext(Dispatchers.IO) {
         runCatching {
             val body = rpc("dailydash_get_pos_products", JSONObject())
