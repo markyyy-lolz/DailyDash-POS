@@ -153,6 +153,11 @@ class PrinterManager(private val context: Context) {
         bold(out, false)
         text(out, "OFFICIAL POS RECEIPT\n")
         text(out, sale.result.orderNo + "\n")
+        if (sale.result.queueNo > 0) {
+            bold(out, true)
+            text(out, "QUEUE #" + sale.result.queueNo + "\n")
+            bold(out, false)
+        }
         if (sale.result.createdAt.isNotBlank()) {
             text(
                 out,
@@ -188,6 +193,16 @@ class PrinterManager(private val context: Context) {
         }
 
         text(out, divider(width) + "\n")
+        if (sale.result.discountTotal > 0) {
+            text(
+                out,
+                fitPair("Subtotal", "PHP " + sale.result.grossTotal, width) + "\n"
+            )
+            text(
+                out,
+                fitPair("Discount", "-PHP " + sale.result.discountTotal, width) + "\n"
+            )
+        }
         bold(out, true)
         text(
             out,
@@ -239,6 +254,9 @@ class PrinterManager(private val context: Context) {
         text(out, "ORDER SLIP\n")
         doubleHeight(out, false)
         text(out, sale.result.orderNo + "\n")
+        if (sale.result.queueNo > 0) {
+            text(out, "QUEUE #" + sale.result.queueNo + "\n")
+        }
         bold(out, false)
         text(out, "PAID - " + sale.result.tender + "\n")
 
