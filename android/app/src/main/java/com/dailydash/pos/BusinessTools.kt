@@ -418,8 +418,16 @@ fun AdvancedCheckoutDialog(
     var walletMethod by remember { mutableStateOf("GCash") }
     var walletAmount by remember(grossTotal) { mutableStateOf(grossTotal.toString()) }
     var reference by remember { mutableStateOf("") }
+
+    var orderType by remember { mutableStateOf("Takeout") }
+    var tableNo by remember { mutableStateOf("") }
     var customerName by remember { mutableStateOf("") }
+    var customerPhone by remember { mutableStateOf("") }
+    var customer by remember { mutableStateOf<CustomerLoyalty?>(null) }
+    var customerLookupBusy by remember { mutableStateOf(false) }
+    var redeemPointsText by remember { mutableStateOf("0") }
     var notes by remember { mutableStateOf("") }
+
     var discountCode by remember { mutableStateOf("") }
     var manualEnabled by remember { mutableStateOf(false) }
     var manualType by remember { mutableStateOf("percentage") }
@@ -429,6 +437,12 @@ fun AdvancedCheckoutDialog(
     var previewing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    val requestedRedeem = redeemPointsText.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    val maxRedeem = minOf(customer?.pointsBalance ?: 0, preview.total)
+    val redeemPoints = requestedRedeem.coerceAtMost(maxRedeem)
+    val loyaltyDiscount = redeemPoints
+    val finalTotal = (preview.total - loyaltyDiscount).coerceAtLeast(0)
 
     fun refreshPreview() {
         previewing = true
@@ -443,7 +457,9 @@ fun AdvancedCheckoutDialog(
                 managerPin = managerPin.takeIf { it.isNotBlank() }
             ).onSuccess {
                 preview = it
-                if (mode != "Cash") walletAmount = it.total.toString()
+                val due = (it.total - redeemPoints).coerceAtLeast(0)
+                if (mode != "Cash") walletAmount = due.toString()
+                if ((cash.toIntOrNull() ?: 0) < due) cash = due.toString()
                 error = null
             }.onFailure {
                 error = it.message
@@ -452,10 +468,37 @@ fun AdvancedCheckoutDialog(
         }
     }
 
-    val finalTotal = preview.total
+    fun lookupCustomer() {
+        val phone = customerPhone.trim()
+        if (phone.filter(Char::isDigit).length < 7) {
+            error = "Enter a valid customer phone number."
+            return
+        }
+        customerLookupBusy = true
+        scope.launch {
+            api.lookupCustomer(staffToken, phone)
+                .onSuccess { found ->
+                    customer = found
+                    if (found != null) {
+                        customerName = found.name
+                        error = null
+                    } else {
+                        error = "New customer — enter a name and the account will be created after payment."
+                    }
+                }
+                .onFailure { error = it.message }
+            customerLookupBusy = false
+        }
+    }
+
     val cashValue = cash.toIntOrNull() ?: 0
     val walletValue = walletAmount.toIntOrNull() ?: 0
     val splitWallet = (finalTotal - cashValue).coerceAtLeast(0)
+    val loyaltyValid =
+        redeemPoints == 0 ||
+            (customer != null && redeemPoints >= 10 && redeemPoints <= (customer?.pointsBalance ?: 0))
+    val orderTypeValid = orderType != "Dine-in" || tableNo.isNotBlank()
+
     val paymentsValid = when (mode) {
         "Cash" -> cashValue >= finalTotal
         "GCash", "Maya" -> walletValue >= finalTotal && reference.isNotBlank()
@@ -479,29 +522,165 @@ fun AdvancedCheckoutDialog(
         title = {
             Column {
                 Text("Checkout", fontWeight = FontWeight.Black, fontSize = 24.sp)
-                Text(itemCount.toString() + " item(s)", color = Color(0xFF718096), fontSize = 12.sp)
+                Text(
+                    itemCount.toString() + " item(s) • DailyDash POS v2.1",
+                    color = Color(0xFF718096),
+                    fontSize = 12.sp
+                )
             }
         },
         text = {
             Column(
-                modifier = Modifier.heightIn(max = 610.dp),
+                modifier = Modifier
+                    .heightIn(max = 650.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(11.dp)
             ) {
                 Surface(color = Color(0xFFEAF3FF), shape = RoundedCornerShape(16.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Column(Modifier.weight(1f)) {
                             Text("Amount Due", color = Color(0xFF60738F), fontSize = 11.sp)
-                            Text(toolPeso(finalTotal), color = Color(0xFF102A56), fontSize = 25.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                toolPeso(finalTotal),
+                                color = Color(0xFF102A56),
+                                fontSize = 25.sp,
+                                fontWeight = FontWeight.Black
+                            )
                         }
-                        if (preview.discountTotal > 0) {
+                        if (preview.discountTotal > 0 || loyaltyDiscount > 0) {
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("Discount", color = Color(0xFF718096), fontSize = 10.sp)
-                                Text("-" + toolPeso(preview.discountTotal), color = Color(0xFF128651), fontWeight = FontWeight.Bold)
+                                if (preview.discountTotal > 0) {
+                                    Text(
+                                        "Promo: -" + toolPeso(preview.discountTotal),
+                                        color = Color(0xFF128651),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                if (loyaltyDiscount > 0) {
+                                    Text(
+                                        "Points: -" + toolPeso(loyaltyDiscount),
+                                        color = Color(0xFF7B4BC4),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
+                Text("Order Type", fontWeight = FontWeight.Black, color = Color(0xFF243B64))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(listOf("Dine-in", "Takeout", "Pickup", "Delivery")) { type ->
+                        FilterChip(
+                            selected = orderType == type,
+                            onClick = { orderType = type },
+                            label = { Text(type) }
+                        )
+                    }
+                }
+
+                if (orderType == "Dine-in") {
+                    OutlinedTextField(
+                        value = tableNo,
+                        onValueChange = { tableNo = it.take(30) },
+                        label = { Text("Table number / name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                HorizontalDivider()
+
+                Text("Customer & Loyalty", fontWeight = FontWeight.Black, color = Color(0xFF243B64))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customerPhone,
+                        onValueChange = {
+                            customerPhone = it.take(30)
+                            customer = null
+                            redeemPointsText = "0"
+                        },
+                        label = { Text("Phone number") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = { lookupCustomer() },
+                        enabled = !customerLookupBusy,
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF102A56))
+                    ) {
+                        Text(if (customerLookupBusy) "..." else "Find")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = customerName,
+                    onValueChange = { customerName = it.take(60) },
+                    label = { Text("Customer name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                customer?.let { member ->
+                    Surface(
+                        color = Color(0xFFF3ECFF),
+                        shape = RoundedCornerShape(15.dp)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(13.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        member.name,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF4F2C79)
+                                    )
+                                    Text(
+                                        member.tier + " Member • " +
+                                            member.pointsBalance.toString() + " pts",
+                                        color = Color(0xFF73549A),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Text(
+                                    toolPeso(member.lifetimeSpend),
+                                    color = Color(0xFF73549A),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = redeemPointsText,
+                                onValueChange = {
+                                    redeemPointsText = it.filter(Char::isDigit).take(6)
+                                },
+                                label = { Text("Redeem points (min 10)") },
+                                supportingText = {
+                                    Text(
+                                        "Available: " + member.pointsBalance +
+                                            " pts • 1 point = ₱1"
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+
+                Text("Payment", fontWeight = FontWeight.Black, color = Color(0xFF243B64))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     items(listOf("Cash", "GCash", "Maya", "Split")) { method ->
                         FilterChip(
@@ -522,7 +701,9 @@ fun AdvancedCheckoutDialog(
                     OutlinedTextField(
                         value = cash,
                         onValueChange = { cash = it.filter(Char::isDigit) },
-                        label = { Text(if (mode == "Split") "Cash portion" else "Cash received") },
+                        label = {
+                            Text(if (mode == "Split") "Cash portion" else "Cash received")
+                        },
                         prefix = { Text("₱") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -561,7 +742,12 @@ fun AdvancedCheckoutDialog(
                     OutlinedTextField(
                         value = reference,
                         onValueChange = { reference = it.take(40) },
-                        label = { Text((if (mode == "Split") walletMethod else mode) + " reference no.") },
+                        label = {
+                            Text(
+                                (if (mode == "Split") walletMethod else mode) +
+                                    " reference no."
+                            )
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -580,12 +766,19 @@ fun AdvancedCheckoutDialog(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = manualEnabled, onCheckedChange = {
-                        manualEnabled = it
-                        discountCode = ""
-                    })
+                    Switch(
+                        checked = manualEnabled,
+                        onCheckedChange = {
+                            manualEnabled = it
+                            discountCode = ""
+                        }
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text("Manual / Senior / PWD discount", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Manual / Senior / PWD discount",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
                 if (manualEnabled) {
@@ -611,9 +804,13 @@ fun AdvancedCheckoutDialog(
                     )
                     OutlinedTextField(
                         value = managerPin,
-                        onValueChange = { managerPin = it.filter(Char::isDigit).take(6) },
+                        onValueChange = {
+                            managerPin = it.filter(Char::isDigit).take(6)
+                        },
                         label = { Text("Manager PIN approval") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword
+                        ),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -630,23 +827,22 @@ fun AdvancedCheckoutDialog(
                 }
 
                 OutlinedTextField(
-                    value = customerName,
-                    onValueChange = { customerName = it.take(60) },
-                    label = { Text("Customer name (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it.take(160) },
                     label = { Text("Order notes (optional)") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                error?.let {
+                    Text(
+                        it,
+                        color = if (it.startsWith("New customer"))
+                            Color(0xFF6B5B00) else MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp
+                    )
+                }
 
-                if (allowOffline && !manualEnabled && paymentsValid) {
+                if (allowOffline && !manualEnabled && paymentsValid && redeemPoints == 0) {
                     OutlinedButton(
                         onClick = {
                             val pending = store.newPendingSale(
@@ -654,6 +850,10 @@ fun AdvancedCheckoutDialog(
                                 payments = currentPayments(),
                                 discountCode = discountCode.takeIf { it.isNotBlank() },
                                 customerName = customerName.takeIf { it.isNotBlank() },
+                                customerPhone = customerPhone.takeIf { it.isNotBlank() },
+                                redeemPoints = 0,
+                                orderType = orderType,
+                                tableNo = tableNo.takeIf { it.isNotBlank() },
                                 notes = notes.takeIf { it.isNotBlank() }
                             )
                             store.savePendingSale(pending)
@@ -667,7 +867,8 @@ fun AdvancedCheckoutDialog(
                         Text("Save Order Offline")
                     }
                     Text(
-                        "This order will sync automatically when the cloud connection returns.",
+                        "The order will sync automatically when the cloud returns. " +
+                            "Loyalty redemption is only available online.",
                         color = Color(0xFF718096),
                         fontSize = 10.sp
                     )
@@ -678,7 +879,7 @@ fun AdvancedCheckoutDialog(
         },
         confirmButton = {
             Button(
-                enabled = !busy && paymentsValid,
+                enabled = !busy && paymentsValid && loyaltyValid && orderTypeValid,
                 onClick = {
                     busy = true
                     error = null
@@ -689,12 +890,18 @@ fun AdvancedCheckoutDialog(
                             cart = cart,
                             payments = payments,
                             staffToken = staffToken,
-                            discountCode = discountCode.takeIf { it.isNotBlank() && !manualEnabled },
+                            discountCode = discountCode.takeIf {
+                                it.isNotBlank() && !manualEnabled
+                            },
                             manualDiscountType = manualType.takeIf { manualEnabled },
                             manualDiscountValue = manualValue.toIntOrNull() ?: 0,
                             manualDiscountLabel = "POS Manual Discount",
                             managerPin = managerPin.takeIf { it.isNotBlank() },
                             customerName = customerName,
+                            customerPhone = customerPhone,
+                            redeemPoints = redeemPoints,
+                            orderType = orderType,
+                            tableNo = tableNo,
                             notes = notes
                         ).onSuccess(onSuccess)
                             .onFailure {
@@ -721,8 +928,30 @@ fun AdvancedCheckoutDialog(
 
 @Composable
 fun SoftwareInfoDialog(
+    api: SupabaseApi,
     onDismiss: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var release by remember { mutableStateOf<AppReleaseInfo?>(null) }
+    var checking by remember { mutableStateOf(true) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    fun checkUpdate() {
+        checking = true
+        updateError = null
+        scope.launch {
+            api.latestAppRelease()
+                .onSuccess { release = it }
+                .onFailure { updateError = it.message }
+            checking = false
+        }
+    }
+
+    LaunchedEffect(Unit) { checkUpdate() }
+
+    val updateAvailable = (release?.versionCode ?: 0) > SupabaseApi.APP_VERSION_CODE
+
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(30.dp),
@@ -753,7 +982,7 @@ fun SoftwareInfoDialog(
                     color = Color(0xFF102A56)
                 )
                 Text(
-                    "Commercial Suite • Version 2.0.1",
+                    "Commercial Suite • Version " + SupabaseApi.APP_VERSION,
                     color = Color(0xFF718096),
                     fontSize = 12.sp
                 )
@@ -762,7 +991,7 @@ fun SoftwareInfoDialog(
         text = {
             Column(
                 modifier = Modifier
-                    .heightIn(max = 560.dp)
+                    .heightIn(max = 580.dp)
                     .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -797,6 +1026,105 @@ fun SoftwareInfoDialog(
                     }
                 }
 
+                Surface(
+                    color = if (updateAvailable) Color(0xFFFFF5E8) else Color(0xFFE8F8EF),
+                    shape = RoundedCornerShape(18.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (updateAvailable) Color(0xFFFFD89C) else Color(0xFFC8EBD8)
+                    )
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (updateAvailable) Icons.Default.SystemUpdate
+                                else Icons.Default.Verified,
+                                null,
+                                tint = if (updateAvailable) Color(0xFFC16A00)
+                                else Color(0xFF128651)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    when {
+                                        checking -> "Checking for updates..."
+                                        updateAvailable ->
+                                            "Update available: v" + (release?.versionName ?: "")
+                                        else -> "You're up to date"
+                                    },
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF263D60)
+                                )
+                                Text(
+                                    "Current build: " + SupabaseApi.APP_VERSION +
+                                        " (" + SupabaseApi.APP_VERSION_CODE + ")",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF718096)
+                                )
+                            }
+                        }
+
+                        release?.changelog?.takeIf { it.isNotBlank() }?.let {
+                            Spacer(Modifier.height(9.dp))
+                            Text(
+                                "What's new",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF425670),
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                it,
+                                color = Color(0xFF718096),
+                                fontSize = 10.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+
+                        updateError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 10.sp)
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { checkUpdate() },
+                                enabled = !checking,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Check")
+                            }
+
+                            release?.updateUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                Button(
+                                    onClick = {
+                                        runCatching {
+                                            context.startActivity(
+                                                android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(url)
+                                                )
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SystemUpdate,
+                                        null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(if (updateAvailable) "Update" else "Release")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 CreditRow(
                     icon = Icons.Default.Lightbulb,
                     title = "Original Concept & Project Direction",
@@ -810,17 +1138,17 @@ fun SoftwareInfoDialog(
                 CreditRow(
                     icon = Icons.Default.Android,
                     title = "Android POS Development",
-                    subtitle = "Staff login, checkout, offline queue, shifts, hold orders and transaction workflow"
+                    subtitle = "Checkout, modifiers, loyalty, offline queue, shifts and transaction workflow"
                 )
                 CreditRow(
                     icon = Icons.Default.Language,
                     title = "Web Manager & Operations Center",
-                    subtitle = "Dashboard, inventory, reports, staff management, KDS and customer queue display"
+                    subtitle = "Dashboard, inventory, reports, loyalty, devices, KDS and customer display"
                 )
                 CreditRow(
                     icon = Icons.Default.Storage,
                     title = "Backend & Database Integration",
-                    subtitle = "Supabase database design, secure RPC workflows, audit logs and cloud synchronization"
+                    subtitle = "Supabase database architecture, secure RPC workflows, audit logs and synchronization"
                 )
                 CreditRow(
                     icon = Icons.Default.Print,
@@ -830,7 +1158,7 @@ fun SoftwareInfoDialog(
                 CreditRow(
                     icon = Icons.Default.Inventory2,
                     title = "Business Systems Architecture",
-                    subtitle = "Inventory, ingredients, recipes, suppliers, purchases, discounts, refunds and reports"
+                    subtitle = "Inventory, recipes, waste, suppliers, discounts, refunds, loyalty and analytics"
                 )
 
                 Surface(
