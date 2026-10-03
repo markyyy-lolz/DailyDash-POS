@@ -483,6 +483,7 @@ private fun ModernPosScreen(
     var showOrders by remember { mutableStateOf(false) }
     var showSettingsHub by remember { mutableStateOf(false) }
     var showPrinterSettings by remember { mutableStateOf(false) }
+    var showSoftwareInfo by remember { mutableStateOf(false) }
     var showShiftDialog by remember { mutableStateOf(false) }
     var showHeldOrders by remember { mutableStateOf(false) }
     var showHoldOrder by remember { mutableStateOf(false) }
@@ -814,6 +815,10 @@ private fun ModernPosScreen(
                 showSettingsHub = false
                 showHeldOrders = true
             },
+            onSoftwareInfo = {
+                showSettingsHub = false
+                showSoftwareInfo = true
+            },
             onDismiss = { showSettingsHub = false }
         )
     }
@@ -849,6 +854,12 @@ private fun ModernPosScreen(
                 scope.launch { snackbar.showSnackbar("Order held successfully.") }
             },
             onDismiss = { showHoldOrder = false }
+        )
+    }
+
+    if (showSoftwareInfo) {
+        SoftwareInfoDialog(
+            onDismiss = { showSoftwareInfo = false }
         )
     }
 
