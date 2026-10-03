@@ -34,10 +34,16 @@
     <div class="ops-tabs">
       <button class="ops-tab active" data-tab="overview">Overview</button>
       <button class="ops-tab" data-tab="discounts">Discounts</button>
+      <button class="ops-tab" data-tab="modifiers">Modifiers</button>
+      <button class="ops-tab" data-tab="loyalty">Loyalty</button>
       <button class="ops-tab" data-tab="ingredients">Ingredients</button>
       <button class="ops-tab" data-tab="suppliers">Suppliers & Purchases</button>
       <button class="ops-tab" data-tab="expenses">Expenses</button>
       <button class="ops-tab" data-tab="refunds">Refunds</button>
+      <button class="ops-tab" data-tab="waste">Waste</button>
+      <button class="ops-tab" data-tab="reorder">Smart Reorder</button>
+      <button class="ops-tab" data-tab="devices">Devices</button>
+      <button class="ops-tab" data-tab="updates">Updates</button>
       <button class="ops-tab" data-tab="shifts">Shifts</button>
       <button class="ops-tab" data-tab="audit">Audit</button>
       <button class="ops-tab" data-tab="settings">Business Settings</button>
@@ -53,6 +59,12 @@
       <div class="ops-grid two" style="margin-top:14px">
         <a class="ops-card link-card" href="kitchen.html"><h3>Kitchen Display</h3><p class="ops-note">Live pending → preparing → ready workflow for order preparation.</p><span class="pill">Open KDS →</span></a>
         <a class="ops-card link-card" href="customer.html"><h3>Customer Queue Display</h3><p class="ops-note">Show preparing and ready queue numbers on a TV, tablet, or browser.</p><span class="pill">Open display →</span></a>
+      </div>
+      <div class="ops-grid" style="margin-top:14px">
+        <article class="ops-card"><span class="muted">Loyalty customers</span><strong id="sumCustomers" class="big">0</strong></article>
+        <article class="ops-card"><span class="muted">Waste cost today</span><strong id="sumWaste" class="big">₱0</strong></article>
+        <article class="ops-card"><span class="muted">Reorder alerts</span><strong id="sumReorder" class="big">0</strong></article>
+        <article class="ops-card"><span class="muted">POS devices online</span><strong id="sumDevices" class="big">0</strong></article>
       </div>
       <article class="ops-card" style="margin-top:14px"><h3>Recent audit activity</h3><div id="overviewAudit" class="ops-table"></div></article>
     </section>
@@ -175,6 +187,111 @@
           </form>
         </article>
         <article class="ops-card"><h3>Refund controls</h3><p class="ops-note">Refunds create audit entries, update order refund totals, and automatically restock tracked finished goods and recipe ingredients.</p><div class="info"><span>Approval</span><b>Manager dashboard</b></div><div class="info"><span>Inventory</span><b>Auto-restock</b></div><div class="info"><span>Audit log</span><b>Enabled</b></div></article>
+      </div>
+    </section>
+
+
+    <section id="modifiers" class="ops-panel">
+      <div class="ops-grid two">
+        <article class="ops-card">
+          <h3>Product Modifier / Add-on</h3>
+          <p class="ops-note">Create sugar/ice choices, add-ons, toppings or extras. Optional ingredient usage can automatically deduct stock.</p>
+          <form id="modifierForm" class="ops-form">
+            <input id="modifierId" type="hidden">
+            <label class="full">Product<select id="modifierProduct"></select></label>
+            <label>Group name<input id="modifierGroup" value="Add-ons" required placeholder="Sugar Level / Add-ons"></label>
+            <label>Group type<select id="modifierType"><option value="single">Single choice</option><option value="multi">Multiple choice</option></select></label>
+            <label>Option name<input id="modifierName" required placeholder="Extra Cheese"></label>
+            <label>Price change<input id="modifierPrice" type="number" value="0"></label>
+            <label>Max selections<input id="modifierMax" type="number" min="1" max="10" value="1"></label>
+            <label>Ingredient link<select id="modifierIngredient"><option value="">None</option></select></label>
+            <label>Ingredient qty<input id="modifierIngredientQty" type="number" step="0.001" min="0" value="0"></label>
+            <label><input id="modifierDefault" type="checkbox"> Default option</label>
+            <label><input id="modifierRequired" type="checkbox"> Required group</label>
+            <button class="primary full" type="submit">Save Modifier</button>
+          </form>
+        </article>
+        <article class="ops-card"><h3>Modifier catalog</h3><div id="modifierTable" class="ops-table"></div></article>
+      </div>
+    </section>
+
+    <section id="loyalty" class="ops-panel">
+      <div class="ops-grid two">
+        <article class="ops-card">
+          <h3>Customer Loyalty</h3>
+          <form id="customerForm" class="ops-form">
+            <input id="customerId" type="hidden">
+            <label>Name<input id="customerName" required></label>
+            <label>Phone<input id="customerPhone" required></label>
+            <label>Birthday<input id="customerBirthday" type="date"></label>
+            <label class="full">Notes<input id="customerNotes"></label>
+            <button class="primary full" type="submit">Save Customer</button>
+          </form>
+          <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+          <h3>Adjust Points</h3>
+          <form id="pointsForm" class="ops-form">
+            <label class="full">Customer<select id="pointsCustomer"></select></label>
+            <label>Points change<input id="pointsChange" type="number" required placeholder="+10 or -5"></label>
+            <label>Note<input id="pointsNote" placeholder="Promo / correction"></label>
+            <button class="secondary full" type="submit">Apply Points Adjustment</button>
+          </form>
+        </article>
+        <article class="ops-card">
+          <div class="ops-actions" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Customers</h3><input id="customerSearch" placeholder="Search name or phone" style="border:1px solid var(--line);border-radius:12px;padding:9px 11px"></div>
+          <div id="customerTable" class="ops-table" style="margin-top:12px"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="waste" class="ops-panel">
+      <div class="ops-grid two">
+        <article class="ops-card">
+          <h3>Waste / Spoilage Entry</h3>
+          <p class="ops-note">Record expired, spilled, damaged or incorrectly prepared stock. Inventory is deducted and the estimated cost is tracked.</p>
+          <form id="wasteForm" class="ops-form">
+            <label>Source<select id="wasteKind"><option value="ingredient">Ingredient</option><option value="product">Finished product</option></select></label>
+            <label>Item<select id="wasteItem"></select></label>
+            <label>Quantity<input id="wasteQty" type="number" step="0.001" min="0.001" required></label>
+            <label>Reason<select id="wasteReason"><option value="expired">Expired</option><option value="spillage">Spillage</option><option value="damaged">Damaged</option><option value="wrong_preparation">Wrong preparation</option><option value="quality">Quality issue</option><option value="other">Other</option></select></label>
+            <label>Staff<select id="wasteStaff"><option value="">System / Manager</option></select></label>
+            <label>Note<input id="wasteNote"></label>
+            <button class="primary full" type="submit">Record Waste</button>
+          </form>
+        </article>
+        <article class="ops-card"><h3>Recent waste</h3><div id="wasteTable" class="ops-table"></div></article>
+      </div>
+    </section>
+
+    <section id="reorder" class="ops-panel">
+      <article class="ops-card">
+        <div class="ops-actions" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Smart Reorder Suggestions</h3><p class="ops-note">Uses the last 7 days of ingredient consumption and current stock to estimate days remaining and suggested replenishment.</p></div><button id="reorderRefresh" class="secondary">Refresh</button></div>
+        <div id="reorderTable" class="ops-table" style="margin-top:12px"></div>
+      </article>
+    </section>
+
+    <section id="devices" class="ops-panel">
+      <article class="ops-card">
+        <h3>POS Device Management</h3>
+        <p class="ops-note">See registered POS devices, app versions, current staff and last online time. Disabling a device revokes its active staff session.</p>
+        <div id="deviceTable" class="ops-table"></div>
+      </article>
+    </section>
+
+    <section id="updates" class="ops-panel">
+      <div class="ops-grid two">
+        <article class="ops-card">
+          <h3>App Release / Changelog</h3>
+          <form id="releaseForm" class="ops-form">
+            <label>Version code<input id="releaseCode" type="number" min="1" value="7" required></label>
+            <label>Version name<input id="releaseName" value="2.1.0" required></label>
+            <label class="full">Update URL<input id="releaseUrl" value="https://github.com/markyyy-lolz/DailyDash-POS"></label>
+            <label class="full">Changelog<textarea id="releaseChangelog" rows="6">Product modifiers and add-ons; customer loyalty and rewards; order type and table handling; waste tracking; smart reorder suggestions; device management; in-app update and changelog support.</textarea></label>
+            <label><input id="releaseRequired" type="checkbox"> Required update</label>
+            <label><input id="releaseActive" type="checkbox" checked> Active</label>
+            <button class="primary full" type="submit">Publish Release Metadata</button>
+          </form>
+        </article>
+        <article class="ops-card"><h3>Release history</h3><div id="releaseTable" class="ops-table"></div></article>
       </div>
     </section>
 
