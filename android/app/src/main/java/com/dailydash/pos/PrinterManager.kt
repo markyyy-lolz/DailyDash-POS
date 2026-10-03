@@ -50,6 +50,24 @@ class PrinterManager(private val context: Context) {
             .apply()
     }
 
+    fun saveBranding(value: ReceiptBranding) {
+        prefs.edit()
+            .putString("brand_store", value.storeName)
+            .putString("brand_branch", value.branchName)
+            .putString("brand_address", value.address)
+            .putString("brand_phone", value.phone)
+            .putString("brand_footer", value.footer)
+            .apply()
+    }
+
+    fun loadBranding(): ReceiptBranding = ReceiptBranding(
+        storeName = prefs.getString("brand_store", "DailyDash") ?: "DailyDash",
+        branchName = prefs.getString("brand_branch", "DailyDash - Paombong") ?: "DailyDash - Paombong",
+        address = prefs.getString("brand_address", "Paombong, Bulacan") ?: "Paombong, Bulacan",
+        phone = prefs.getString("brand_phone", "") ?: "",
+        footer = prefs.getString("brand_footer", "Thank you for choosing DailyDash!") ?: "Thank you for choosing DailyDash!"
+    )
+
     fun hasBluetoothPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ContextCompat.checkSelfPermission(
@@ -143,14 +161,18 @@ class PrinterManager(private val context: Context) {
     ): ByteArray {
         val width = 32
         val out = ByteArrayOutputStream()
+        val brand = loadBranding()
 
         reset(out)
         center(out)
         bold(out, true)
         doubleHeight(out, true)
-        text(out, "DAILY DASH\n")
+        text(out, brand.storeName.uppercase().take(width) + "\n")
         doubleHeight(out, false)
         bold(out, false)
+        if (brand.branchName.isNotBlank()) text(out, brand.branchName.take(width) + "\n")
+        if (brand.address.isNotBlank()) wrap(brand.address, width).forEach { text(out, it + "\n") }
+        if (brand.phone.isNotBlank()) text(out, brand.phone.take(width) + "\n")
         text(out, "OFFICIAL POS RECEIPT\n")
         text(out, sale.result.orderNo + "\n")
         if (sale.result.queueNo > 0) {
@@ -231,10 +253,9 @@ class PrinterManager(private val context: Context) {
 
         text(out, divider(width) + "\n")
         center(out)
-        text(out, "Thank you for choosing\n")
-        bold(out, true)
-        text(out, "DailyDash!\n")
-        bold(out, false)
+        wrap(brand.footer.ifBlank { "Thank you for choosing DailyDash!" }, width).forEach {
+            text(out, it + "\n")
+        }
         feed(out, 5)
 
         return out.toByteArray()
