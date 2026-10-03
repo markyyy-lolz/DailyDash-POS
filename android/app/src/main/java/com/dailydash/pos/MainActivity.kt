@@ -491,6 +491,9 @@ private fun ModernPosScreen(
     fun refresh() {
         syncing = true
         scope.launch {
+            api.loadReceiptBranding()
+                .onSuccess { printerManager.saveBranding(it) }
+
             api.loadProducts()
                 .onSuccess { cloud ->
                     if (cloud.isNotEmpty()) products = cloud
