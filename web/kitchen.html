@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#075dbe">
+<title>DailyDash Kitchen Display</title>
+<style>
+:root{--b:#0866d7;--bg:#f4f7fb;--ink:#132743}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{position:sticky;top:0;z-index:2;background:#fff;padding:16px 20px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(20,48,80,.08)}
+header img{width:94px;height:52px;object-fit:contain}header h1{margin:0;font-size:22px}.status{margin-left:auto;font-size:12px;color:#64748b}
+.board{padding:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.col{min-height:75vh;background:#eaf0f7;border-radius:22px;padding:13px}.col h2{margin:4px 4px 12px;font-size:16px}
+.ticket{background:#fff;border-radius:18px;padding:15px;margin-bottom:10px;box-shadow:0 4px 14px rgba(21,45,75,.06)}.ticket .top{display:flex;justify-content:space-between;gap:10px}.queue{font-size:28px;font-weight:950;color:var(--b)}.order{font-size:11px;color:#738096}
+.items{margin:12px 0;display:grid;gap:6px}.item{font-size:13px;font-weight:750}.up{font-size:10px;color:#d97706}.note{background:#fff6e6;border-radius:10px;padding:8px;font-size:11px;color:#815b16}
+.actions{display:flex;gap:7px}.actions button{flex:1;border:0;border-radius:10px;padding:9px;font-weight:850;cursor:pointer}.primary{background:var(--b);color:#fff}.ready{background:#e8f8ef;color:#13824f}.served{background:#eef2f7;color:#526274}
+.empty{text-align:center;color:#7b8798;padding:30px 8px}@media(max-width:900px){.board{grid-template-columns:1fr}} 
+</style>
+</head>
+<body>
+<header><img src="assets/dailydash-logo.svg" alt="DailyDash"><div><h1>Kitchen Display</h1><div style="font-size:11px;color:#718096">Live preparation queue</div></div><div id="kdsStatus" class="status">Connecting…</div></header>
+<main class="board">
+<section class="col"><h2>🕐 Pending</h2><div id="pending"></div></section>
+<section class="col"><h2>🔥 Preparing</h2><div id="preparing"></div></section>
+<section class="col"><h2>✅ Ready</h2><div id="ready"></div></section>
+</main>
+<script src="kitchen.js"></script>
+</body></html>
