@@ -473,6 +473,8 @@ private fun ModernPosScreen(
     val printerManager = remember(context) { PrinterManager(context) }
 
     var products by remember { mutableStateOf(MenuSeed.products) }
+    var modifiers by remember { mutableStateOf(listOf<ModifierOption>()) }
+    var customizingProduct by remember { mutableStateOf<Product?>(null) }
     var selectedCategory by remember { mutableStateOf("All") }
     var search by remember { mutableStateOf("") }
     var cart by remember { mutableStateOf(listOf<CartLine>()) }
@@ -494,6 +496,16 @@ private fun ModernPosScreen(
         scope.launch {
             api.loadReceiptBranding()
                 .onSuccess { printerManager.saveBranding(it) }
+
+            api.deviceHeartbeat(session.token)
+                .onFailure { error ->
+                    if (error.message?.contains("disabled", ignoreCase = true) == true) {
+                        snackbar.showSnackbar("This POS device has been disabled by the manager.")
+                    }
+                }
+
+            api.loadModifiers()
+                .onSuccess { modifiers = it }
 
             api.loadProducts()
                 .onSuccess { cloud ->
@@ -535,6 +547,28 @@ private fun ModernPosScreen(
             (search.isBlank() || it.name.contains(search, ignoreCase = true))
     }
     val cartTotal = cart.sumOf { it.lineTotal }
+
+    fun addCartLine(line: CartLine) {
+        val signature = line.modifiers
+            .sortedBy { it.option.id }
+            .joinToString("|") { it.option.id + ":" + it.quantity }
+        val index = cart.indexOfFirst { existing ->
+            existing.product.id == line.product.id &&
+                existing.upsized == line.upsized &&
+                existing.modifiers
+                    .sortedBy { it.option.id }
+                    .joinToString("|") { it.option.id + ":" + it.quantity } == signature
+        }
+        cart = if (index >= 0) {
+            cart.toMutableList().also { list ->
+                list[index] = list[index].copy(
+                    quantity = list[index].quantity + line.quantity
+                )
+            }
+        } else {
+            cart + line
+        }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wideLayout = maxWidth >= 760.dp
@@ -696,12 +730,12 @@ private fun ModernPosScreen(
                     ) {
                         items(filtered, key = { it.id }) { product ->
                             ModernProductCard(product) {
-                                val index = cart.indexOfFirst { it.product.id == product.id && !it.upsized }
-                                cart = if (index >= 0) {
-                                    cart.toMutableList().also { list ->
-                                        list[index] = list[index].copy(quantity = list[index].quantity + 1)
-                                    }
-                                } else cart + CartLine(product)
+                                val productModifiers = modifiers.filter { it.productId == product.id }
+                                if (productModifiers.isNotEmpty() || product.allowUpsize) {
+                                    customizingProduct = product
+                                } else {
+                                    addCartLine(CartLine(product))
+                                }
                             }
                         }
                     }
@@ -734,6 +768,18 @@ private fun ModernPosScreen(
                 }
             }
         }
+    }
+
+    customizingProduct?.let { product ->
+        ProductCustomizerDialog(
+            product = product,
+            options = modifiers.filter { it.productId == product.id },
+            onAdd = { line ->
+                addCartLine(line)
+                customizingProduct = null
+            },
+            onDismiss = { customizingProduct = null }
+        )
     }
 
     if (showCart) {
@@ -859,6 +905,7 @@ private fun ModernPosScreen(
 
     if (showSoftwareInfo) {
         SoftwareInfoDialog(
+            api = api,
             onDismiss = { showSoftwareInfo = false }
         )
     }
