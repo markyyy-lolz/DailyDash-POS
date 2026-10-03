@@ -37,6 +37,7 @@
       <button class="ops-tab" data-tab="ingredients">Ingredients</button>
       <button class="ops-tab" data-tab="suppliers">Suppliers & Purchases</button>
       <button class="ops-tab" data-tab="expenses">Expenses</button>
+      <button class="ops-tab" data-tab="refunds">Refunds</button>
       <button class="ops-tab" data-tab="shifts">Shifts</button>
       <button class="ops-tab" data-tab="audit">Audit</button>
       <button class="ops-tab" data-tab="settings">Business Settings</button>
@@ -140,6 +141,27 @@
           </form>
         </article>
         <article class="ops-card"><h3>Recent expenses</h3><div id="expenseTable" class="ops-table"></div></article>
+      </div>
+    </section>
+
+
+    <section id="refunds" class="ops-panel">
+      <div class="ops-grid two">
+        <article class="ops-card">
+          <h3>Refund transaction</h3>
+          <p class="ops-note">Load an order, choose item quantities to refund, enter a reason, then confirm. Inventory and ingredient stock are restored automatically.</p>
+          <div class="ops-form">
+            <label class="full">Order UUID<input id="refundOrderId" placeholder="Paste order ID from Orders"></label>
+            <button id="refundLoadBtn" class="secondary full" type="button">Load Order</button>
+          </div>
+          <div id="refundDetails" style="margin-top:14px"></div>
+          <form id="refundForm" class="ops-form" style="margin-top:14px">
+            <label>Authorized staff<select id="refundStaff"></select></label>
+            <label>Reason<input id="refundReason" required placeholder="Customer return / wrong item"></label>
+            <button class="primary full" type="submit">Process Refund</button>
+          </form>
+        </article>
+        <article class="ops-card"><h3>Refund controls</h3><p class="ops-note">Refunds create audit entries, update order refund totals, and automatically restock tracked finished goods and recipe ingredients.</p><div class="info"><span>Approval</span><b>Manager dashboard</b></div><div class="info"><span>Inventory</span><b>Auto-restock</b></div><div class="info"><span>Audit log</span><b>Enabled</b></div></article>
       </div>
     </section>
 
