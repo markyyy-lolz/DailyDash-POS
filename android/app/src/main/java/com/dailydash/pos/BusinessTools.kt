@@ -397,6 +397,9 @@ fun AdvancedCheckoutDialog(
     api: SupabaseApi,
     cart: List<CartLine>,
     staffToken: String,
+    store: PosStore,
+    allowOffline: Boolean,
+    onOfflineSaved: () -> Unit,
     onSuccess: (CloudOrderResult) -> Unit,
     onFailure: (String) -> Unit,
     onDismiss: () -> Unit
@@ -450,6 +453,16 @@ fun AdvancedCheckoutDialog(
         "GCash", "Maya" -> walletValue >= finalTotal && reference.isNotBlank()
         "Split" -> cashValue > 0 && splitWallet > 0 && reference.isNotBlank()
         else -> false
+    }
+
+    fun currentPayments(): List<PaymentPart> = when (mode) {
+        "Cash" -> listOf(PaymentPart("Cash", cashValue))
+        "GCash", "Maya" -> listOf(PaymentPart(mode, walletValue, reference))
+        "Split" -> listOf(
+            PaymentPart("Cash", cashValue),
+            PaymentPart(walletMethod, splitWallet, reference)
+        )
+        else -> emptyList()
     }
 
     AlertDialog(
@@ -624,6 +637,34 @@ fun AdvancedCheckoutDialog(
                 )
 
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+
+                if (allowOffline && !manualEnabled && paymentsValid) {
+                    OutlinedButton(
+                        onClick = {
+                            val pending = store.newPendingSale(
+                                lines = cart,
+                                payments = currentPayments(),
+                                discountCode = discountCode.takeIf { it.isNotBlank() },
+                                customerName = customerName.takeIf { it.isNotBlank() },
+                                notes = notes.takeIf { it.isNotBlank() }
+                            )
+                            store.savePendingSale(pending)
+                            onOfflineSaved()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Default.CloudOff, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("Save Order Offline")
+                    }
+                    Text(
+                        "This order will sync automatically when the cloud connection returns.",
+                        color = Color(0xFF718096),
+                        fontSize = 10.sp
+                    )
+                }
+
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
@@ -633,15 +674,7 @@ fun AdvancedCheckoutDialog(
                 onClick = {
                     busy = true
                     error = null
-                    val payments = when (mode) {
-                        "Cash" -> listOf(PaymentPart("Cash", cashValue))
-                        "GCash", "Maya" -> listOf(PaymentPart(mode, walletValue, reference))
-                        "Split" -> listOf(
-                            PaymentPart("Cash", cashValue),
-                            PaymentPart(walletMethod, splitWallet, reference)
-                        )
-                        else -> emptyList()
-                    }
+                    val payments = currentPayments()
 
                     scope.launch {
                         api.createOrderAdvanced(
