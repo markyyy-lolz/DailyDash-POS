@@ -499,6 +499,24 @@ private fun ModernPosScreen(
                     if (cloud.isNotEmpty()) products = cloud
                     online = true
                     cart = cart.filter { line -> cloud.any { it.id == line.product.id && it.available } }
+
+                    val pending = store.pendingSales()
+                    if (pending.isNotEmpty()) {
+                        var syncedCount = 0
+                        pending.forEach { pendingSale ->
+                            api.syncPendingSale(pendingSale, session.token)
+                                .onSuccess { result ->
+                                    store.saveOrder(result, pendingSale.lines.sumOf { it.quantity })
+                                    store.deletePendingSale(pendingSale.localId)
+                                    syncedCount++
+                                }
+                        }
+                        if (syncedCount > 0) {
+                            snackbar.showSnackbar(
+                                syncedCount.toString() + " offline order(s) synced."
+                            )
+                        }
+                    }
                 }
                 .onFailure {
                     online = false
@@ -734,6 +752,15 @@ private fun ModernPosScreen(
             api = api,
             cart = cart,
             staffToken = session.token,
+            store = store,
+            allowOffline = !online,
+            onOfflineSaved = {
+                cart = emptyList()
+                showCheckout = false
+                scope.launch {
+                    snackbar.showSnackbar("Order saved offline. It will sync automatically.")
+                }
+            },
             onSuccess = { result ->
                 val soldLines = cart.map { it.copy() }
                 val sale = CompletedSale(result, soldLines, session.member)
