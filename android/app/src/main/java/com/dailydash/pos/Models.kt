@@ -12,7 +12,11 @@ data class Product(
     val imageUrl: String? = null
 )
 
-data class CartLine(val product: Product, val quantity: Int = 1, val upsized: Boolean = false) {
+data class CartLine(
+    val product: Product,
+    val quantity: Int = 1,
+    val upsized: Boolean = false
+) {
     val unitPrice: Int get() = product.price + if (upsized) product.upsizePrice else 0
     val lineTotal: Int get() = unitPrice * quantity
 }
@@ -30,6 +34,31 @@ data class StaffSession(
     val member: StaffMember
 )
 
+data class PaymentPart(
+    val method: String,
+    val amount: Int,
+    val referenceNo: String? = null
+)
+
+data class ShiftInfo(
+    val id: String,
+    val openingCash: Int,
+    val closingCash: Int? = null,
+    val expectedCash: Int? = null,
+    val variance: Int? = null,
+    val status: String = "open",
+    val openedAt: String = "",
+    val closedAt: String? = null
+)
+
+data class HeldOrder(
+    val id: String,
+    val label: String,
+    val notes: String?,
+    val lines: List<CartLine>,
+    val updatedAt: String
+)
+
 data class CloudOrderResult(
     val remoteId: String,
     val orderNo: String,
@@ -37,7 +66,10 @@ data class CloudOrderResult(
     val cashReceived: Int,
     val changeAmount: Int,
     val tender: String,
-    val createdAt: String
+    val createdAt: String,
+    val queueNo: Int = 0,
+    val grossTotal: Int = total,
+    val discountTotal: Int = 0
 )
 
 data class CompletedSale(
