@@ -122,13 +122,17 @@ async function refreshCurrent(){
 }
 
 async function loadDashboard(){
-  const d=await admin('dashboard');
+  const [d,ops]=await Promise.all([admin('dashboard'),admin('commercial_summary')]);
   $('#salesToday').textContent=money(d.sales_today);
   $('#ordersToday').textContent=d.orders_today||0;
   $('#avgOrder').textContent=money(d.average_order);
   $('#menuCount').textContent=d.product_count||0;
   $('#lowStockCount').textContent=d.low_stock_count||0;
   $('#outStockText').textContent=(d.out_of_stock_count||0)+' out of stock';
+  $('#dashOpenShifts').textContent=ops.open_shifts||0;
+  $('#dashLowIngredients').textContent=ops.low_ingredients||0;
+  $('#dashExpenses').textContent=money(ops.expenses_today||0);
+  $('#dashRefunds').textContent=money(ops.refunds_today||0);
 
   const totals=d.tender_totals||{};
   const max=Math.max(1,...Object.values(totals).map(Number));
