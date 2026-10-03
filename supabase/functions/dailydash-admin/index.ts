@@ -118,6 +118,8 @@ Deno.serve(async (req: Request) => {
     const staffId = body.staff_id ? String(body.staff_id) : null;
     const username = body.username ? String(body.username) : null;
     const deviceCode = String(body.device_code ?? "DAILYDASH-ANDROID-01").slice(0, 80);
+    const deviceName = String(body.device_name ?? "DailyDash Android POS").slice(0, 100);
+    const appVersion = String(body.app_version ?? "").slice(0, 30);
 
     if (!["pin", "password"].includes(method)) {
       return json({ error: "Invalid login method." }, 400);
@@ -168,6 +170,30 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("dailydash_admin_attempts").delete().eq("fingerprint", loginKey);
 
+    const { data: existingDevice } = await supabase
+      .from("dailydash_devices")
+      .select("id,is_active")
+      .eq("device_code", deviceCode)
+      .maybeSingle();
+
+    if (existingDevice && existingDevice.is_active === false) {
+      return json({ error: "This POS device is disabled by the manager." }, 403);
+    }
+
+    const { error: deviceError } = await supabase
+      .from("dailydash_devices")
+      .upsert({
+        device_code: deviceCode,
+        display_name: deviceName || "DailyDash Android POS",
+        app_version: appVersion || null,
+        current_staff_id: staff.id,
+        last_seen_at: new Date().toISOString(),
+        last_ip: fingerprint,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "device_code" });
+
+    if (deviceError) return json({ error: deviceError.message }, 500);
+
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     const sessionToken = Array.from(bytes)
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -198,6 +224,13 @@ Deno.serve(async (req: Request) => {
       session_token: sessionToken,
       expires_in_hours: 12,
     });
+  }
+
+
+  if (action === "app_update") {
+    const { data, error } = await supabase.rpc("dailydash_latest_app_release");
+    if (error) return json({ error: error.message }, 500);
+    return json({ release: data ?? {} });
   }
 
   if (action === "staff_logout") {
@@ -904,6 +937,230 @@ Deno.serve(async (req: Request) => {
     });
     if (error) return json({ error: error.message }, 400);
     return json({ refund: data });
+  }
+
+
+  if (action === "v21_summary") {
+    const start = manilaDayStartUtcIso();
+    const [customers, waste, devices, reorder] = await Promise.all([
+      supabase.from("dailydash_customers").select("id", { count: "exact", head: true }).eq("active", true),
+      supabase.from("dailydash_waste_log").select("estimated_cost").gte("created_at", start),
+      supabase.from("dailydash_devices").select("id,is_active,last_seen_at"),
+      supabase.rpc("dailydash_smart_reorder"),
+    ]);
+    const deviceRows = devices.data ?? [];
+    return json({
+      customers: customers.count ?? 0,
+      waste_cost_today: (waste.data ?? []).reduce((a:any,x:any)=>a+Number(x.estimated_cost||0),0),
+      active_devices: deviceRows.filter((x:any)=>x.is_active).length,
+      online_devices: deviceRows.filter((x:any)=>x.is_active && Date.now()-new Date(x.last_seen_at).getTime()<10*60*1000).length,
+      reorder_alerts: Array.isArray(reorder.data) ? reorder.data.filter((x:any)=>Number(x.suggested_qty)>0).length : 0,
+    });
+  }
+
+  if (action === "modifiers") {
+    const { data, error } = await supabase
+      .from("dailydash_product_modifiers")
+      .select("*,dailydash_products(name,category),dailydash_ingredients(name,unit)")
+      .order("product_id").order("group_name").order("sort_order");
+    if (error) return json({ error: error.message }, 500);
+    return json({ modifiers: data ?? [] });
+  }
+
+  if (action === "modifier_save") {
+    const id = body.id ? String(body.id) : null;
+    const patch:any = {
+      product_id: String(body.product_id ?? ""),
+      group_name: String(body.group_name ?? "Add-ons").trim() || "Add-ons",
+      group_type: String(body.group_type ?? "multi"),
+      name: String(body.name ?? "").trim(),
+      price_delta: Number(body.price_delta ?? 0),
+      is_default: Boolean(body.is_default),
+      required: Boolean(body.required),
+      max_select: Math.max(1, Math.min(10, Number(body.max_select ?? 1))),
+      ingredient_id: body.ingredient_id ? String(body.ingredient_id) : null,
+      ingredient_qty: Number(body.ingredient_qty ?? 0),
+      active: body.active !== false,
+      sort_order: Number(body.sort_order ?? 0),
+      updated_at: new Date().toISOString(),
+    };
+    if (!patch.product_id || !patch.name) return json({ error: "Product and modifier name are required." }, 400);
+    if (!["single","multi"].includes(patch.group_type)) return json({ error: "Invalid modifier group type." }, 400);
+    if (patch.ingredient_qty < 0) return json({ error: "Ingredient quantity cannot be negative." }, 400);
+
+    let result;
+    if (id) result = await supabase.from("dailydash_product_modifiers").update(patch).eq("id",id).select("*").single();
+    else result = await supabase.from("dailydash_product_modifiers").insert(patch).select("*").single();
+    if (result.error) return json({ error: result.error.message }, 400);
+    return json({ modifier: result.data });
+  }
+
+  if (action === "modifier_toggle") {
+    const { data, error } = await supabase
+      .from("dailydash_product_modifiers")
+      .update({ active:Boolean(body.active), updated_at:new Date().toISOString() })
+      .eq("id",String(body.id ?? ""))
+      .select("*").single();
+    if (error) return json({ error:error.message },400);
+    return json({ modifier:data });
+  }
+
+  if (action === "modifier_delete") {
+    const { error } = await supabase
+      .from("dailydash_product_modifiers")
+      .delete().eq("id",String(body.id ?? ""));
+    if (error) return json({ error:error.message },400);
+    return json({ ok:true });
+  }
+
+  if (action === "customers") {
+    const q = String(body.q ?? "").trim();
+    let query = supabase
+      .from("dailydash_customers")
+      .select("*")
+      .order("updated_at",{ascending:false})
+      .limit(300);
+    if (q) query = query.or("name.ilike.%"+q+"%,phone.ilike.%"+q+"%");
+    const { data, error } = await query;
+    if (error) return json({ error:error.message },500);
+    return json({ customers:data ?? [] });
+  }
+
+  if (action === "customer_save") {
+    const id = body.id ? String(body.id) : null;
+    const patch:any = {
+      name:String(body.name ?? "").trim(),
+      phone:String(body.phone ?? "").trim(),
+      birthday:body.birthday || null,
+      notes:body.notes ? String(body.notes).trim() : null,
+      active:body.active !== false,
+      updated_at:new Date().toISOString(),
+    };
+    if (!patch.name || patch.phone.replace(/\D/g,"").length < 7) {
+      return json({ error:"Customer name and valid phone are required." },400);
+    }
+    let result;
+    if (id) result=await supabase.from("dailydash_customers").update(patch).eq("id",id).select("*").single();
+    else result=await supabase.from("dailydash_customers").insert(patch).select("*").single();
+    if (result.error) return json({ error:result.error.message },400);
+    return json({ customer:result.data });
+  }
+
+  if (action === "loyalty_adjust") {
+    const customerId=String(body.customer_id ?? "");
+    const change=Number(body.points_change ?? 0);
+    const note=String(body.note ?? "Manager adjustment").trim();
+    if (!customerId || !Number.isInteger(change) || change===0) return json({ error:"Valid customer and non-zero whole points are required." },400);
+
+    const { data:customer,error:loadError } = await supabase
+      .from("dailydash_customers").select("id,points_balance").eq("id",customerId).single();
+    if (loadError) return json({ error:loadError.message },400);
+    const next=Number(customer.points_balance||0)+change;
+    if (next<0) return json({ error:"Adjustment would make points negative." },400);
+
+    const { error:updateError } = await supabase
+      .from("dailydash_customers").update({points_balance:next,updated_at:new Date().toISOString()}).eq("id",customerId);
+    if (updateError) return json({ error:updateError.message },500);
+
+    await supabase.from("dailydash_loyalty_transactions").insert({
+      customer_id:customerId,points_change:change,balance_after:next,reason:"adjustment",note
+    });
+    return json({ ok:true,balance:next });
+  }
+
+  if (action === "waste") {
+    const { data, error } = await supabase
+      .from("dailydash_waste_log")
+      .select("*,dailydash_staff(display_name),dailydash_ingredients(name,unit),dailydash_products(name,category)")
+      .order("created_at",{ascending:false}).limit(300);
+    if (error) return json({ error:error.message },500);
+    return json({ waste:data ?? [] });
+  }
+
+  if (action === "waste_save") {
+    const { data, error } = await supabase.rpc("dailydash_record_waste",{
+      p_staff_id: body.staff_id ? String(body.staff_id) : null,
+      p_ingredient_id: body.ingredient_id ? String(body.ingredient_id) : null,
+      p_product_id: body.product_id ? String(body.product_id) : null,
+      p_quantity: Number(body.quantity ?? 0),
+      p_reason: String(body.reason ?? "other"),
+      p_note: body.note ? String(body.note) : null,
+    });
+    if (error) return json({ error:error.message },400);
+    return json({ waste:data });
+  }
+
+  if (action === "smart_reorder") {
+    const { data, error } = await supabase.rpc("dailydash_smart_reorder");
+    if (error) return json({ error:error.message },500);
+    return json({ suggestions:data ?? [] });
+  }
+
+  if (action === "devices") {
+    const { data, error } = await supabase
+      .from("dailydash_devices")
+      .select("*,dailydash_staff(display_name,role)")
+      .order("last_seen_at",{ascending:false});
+    if (error) return json({ error:error.message },500);
+    return json({ devices:data ?? [] });
+  }
+
+  if (action === "device_toggle") {
+    const id=String(body.id ?? "");
+    const active=Boolean(body.active);
+    const { data,error } = await supabase
+      .from("dailydash_devices")
+      .update({is_active:active,updated_at:new Date().toISOString()})
+      .eq("id",id).select("*").single();
+    if (error) return json({ error:error.message },400);
+    if (!active && data?.device_code) {
+      await supabase.from("dailydash_staff_sessions").delete().eq("device_code",data.device_code);
+    }
+    return json({ device:data });
+  }
+
+  if (action === "device_save") {
+    const id=String(body.id ?? "");
+    const { data,error } = await supabase
+      .from("dailydash_devices")
+      .update({
+        display_name:String(body.display_name ?? "DailyDash POS").trim(),
+        notes:body.notes ? String(body.notes).trim() : null,
+        updated_at:new Date().toISOString()
+      })
+      .eq("id",id).select("*").single();
+    if (error) return json({ error:error.message },400);
+    return json({ device:data });
+  }
+
+  if (action === "app_releases") {
+    const { data,error } = await supabase
+      .from("dailydash_app_releases")
+      .select("*").order("version_code",{ascending:false});
+    if (error) return json({ error:error.message },500);
+    return json({ releases:data ?? [] });
+  }
+
+  if (action === "app_release_save") {
+    const versionCode=Number(body.version_code ?? 0);
+    const versionName=String(body.version_name ?? "").trim();
+    if (!Number.isInteger(versionCode) || versionCode<=0 || !versionName) {
+      return json({ error:"Version code and version name are required." },400);
+    }
+    const row={
+      version_code:versionCode,
+      version_name:versionName,
+      changelog:String(body.changelog ?? ""),
+      update_url:body.update_url ? String(body.update_url).trim() : null,
+      required:Boolean(body.required),
+      active:body.active !== false,
+      published_at:new Date().toISOString(),
+    };
+    const { data,error } = await supabase
+      .from("dailydash_app_releases")
+      .upsert(row,{onConflict:"version_code"}).select("*").single();
+    if (error) return json({ error:error.message },400);
+    return json({ release:data });
   }
 
   if (action === "change_pin") {
