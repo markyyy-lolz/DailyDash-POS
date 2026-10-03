@@ -212,6 +212,49 @@ class SupabaseApi {
         }
     }
 
+    suspend fun previewDiscount(
+        staffToken: String,
+        subtotal: Int,
+        discountCode: String? = null,
+        manualDiscountType: String? = null,
+        manualDiscountValue: Int = 0,
+        manualDiscountLabel: String = "Manual Discount",
+        managerPin: String? = null
+    ): Result<DiscountPreview> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("p_staff_session", staffToken)
+                .put("p_subtotal", subtotal)
+                .put(
+                    "p_discount_code",
+                    discountCode?.takeIf { it.isNotBlank() } ?: JSONObject.NULL
+                )
+                .put(
+                    "p_manager_pin",
+                    managerPin?.takeIf { it.isNotBlank() } ?: JSONObject.NULL
+                )
+
+            if (!manualDiscountType.isNullOrBlank() && manualDiscountValue > 0) {
+                payload.put(
+                    "p_manual_discount",
+                    JSONObject()
+                        .put("type", manualDiscountType)
+                        .put("value", manualDiscountValue)
+                        .put("label", manualDiscountLabel)
+                )
+            } else {
+                payload.put("p_manual_discount", JSONObject.NULL)
+            }
+
+            val o = JSONObject(rpc("dailydash_preview_discount", payload))
+            DiscountPreview(
+                label = o.optString("label").takeIf { it.isNotBlank() && it != "null" },
+                discountTotal = o.optInt("discount_total", 0),
+                total = o.optInt("total", subtotal)
+            )
+        }
+    }
+
     suspend fun createOrder(
         cart: List<CartLine>,
         tender: String,
