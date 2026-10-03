@@ -2,7 +2,7 @@ const SUPABASE_URL='https://cpodvrwykhkndtwcsmgp.supabase.co';
 const SUPABASE_KEY='sb_publishable_FeiWv8Dur_Qr3d0LF4RBhw_QSObAAHj';
 const ADMIN_URL=SUPABASE_URL+'/functions/v1/dailydash-admin';
 let pin=sessionStorage.getItem('dd_manager_pin')||'';
-let ingredients=[],suppliers=[],staff=[],refundOrder=null;
+let ingredients=[],suppliers=[],staff=[],products=[],recipes=[],refundOrder=null;
 
 const $=s=>document.querySelector(s);
 const $$=s=>Array.from(document.querySelectorAll(s));
@@ -71,8 +71,10 @@ async function loadDiscounts(){
 }
 
 async function loadIngredients(){
-  const d=await admin('ingredients');
+  const [d,p]=await Promise.all([admin('ingredients'),admin('products')]);
   ingredients=d.ingredients||[];
+  recipes=d.recipes||[];
+  products=p.products||[];
   const rows=ingredients.map(x=>[
     '<b>'+esc(x.name)+'</b><br><small>'+esc(x.unit)+'</small>',
     Number(x.stock_qty).toLocaleString(),
@@ -84,6 +86,33 @@ async function loadIngredients(){
   const opts=ingredients.map(x=>'<option value="'+x.id+'">'+esc(x.name)+' ('+esc(x.unit)+')</option>').join('');
   $('#adjustIngredient').innerHTML=opts;
   $('#purchaseIngredient').innerHTML=opts;
+  $('#recipeProduct').innerHTML=products.map(x=>'<option value="'+x.id+'">'+esc(x.name)+' — '+esc(x.category)+'</option>').join('');
+  renderRecipeBuilder();
+}
+
+function ingredientOptionHtml(selected=''){
+  return ingredients.map(x=>'<option value="'+x.id+'" '+(x.id===selected?'selected':'')+'>'+esc(x.name)+' ('+esc(x.unit)+')</option>').join('');
+}
+
+function recipeRow(ingredientId='',qty=''){
+  return '<div class="recipe-row" style="display:grid;grid-template-columns:1fr 120px 42px;gap:8px;margin:8px 0">'+
+    '<select class="recipe-ing" style="border:1px solid var(--line);border-radius:12px;padding:10px">'+ingredientOptionHtml(ingredientId)+'</select>'+
+    '<input class="recipe-qty" type="number" step="0.001" min="0.001" value="'+esc(qty)+'" placeholder="Qty" style="border:1px solid var(--line);border-radius:12px;padding:10px">'+
+    '<button type="button" class="tiny danger recipe-remove">×</button>'+
+  '</div>';
+}
+
+function wireRecipeRows(){
+  $('.recipe-remove').forEach(b=>b.onclick=()=>b.closest('.recipe-row').remove());
+}
+
+function renderRecipeBuilder(){
+  const productId=$('#recipeProduct')?.value||products[0]?.id||'';
+  const current=recipes.filter(r=>r.product_id===productId);
+  $('#recipeRows').innerHTML=current.length
+    ? current.map(r=>recipeRow(r.ingredient_id,r.qty)).join('')
+    : (ingredients.length?recipeRow(ingredients[0].id,''):'<div class="empty">Add ingredients first.</div>');
+  wireRecipeRows();
 }
 
 async function loadSuppliers(){
@@ -172,6 +201,29 @@ $('#ingredientForm').onsubmit=async e=>{
       cost_per_unit:Number($('#ingredientCost').value||0),active:true
     });
     e.target.reset();$('#ingredientUnit').value='ml';await loadIngredients();toast('Ingredient added');
+  }catch(err){toast(err.message,true)}
+};
+
+
+$('#recipeProduct').onchange=renderRecipeBuilder;
+$('#recipeAddRow').onclick=()=>{
+  if(!ingredients.length){toast('Add ingredients first.',true);return}
+  $('#recipeRows').insertAdjacentHTML('beforeend',recipeRow(ingredients[0].id,''));
+  wireRecipeRows();
+};
+$('#recipeSave').onclick=async()=>{
+  const productId=$('#recipeProduct').value;
+  const items=$('.recipe-row').map(row=>({
+    ingredient_id:row.querySelector('.recipe-ing').value,
+    qty:Number(row.querySelector('.recipe-qty').value||0)
+  })).filter(x=>x.ingredient_id&&x.qty>0);
+
+  const ids=items.map(x=>x.ingredient_id);
+  if(new Set(ids).size!==ids.length){toast('Do not add the same ingredient twice.',true);return}
+  try{
+    await admin('recipe_save',{product_id:productId,items});
+    toast('Recipe saved');
+    await loadIngredients();
   }catch(err){toast(err.message,true)}
 };
 
