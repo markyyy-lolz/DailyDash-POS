@@ -97,6 +97,19 @@
             <label class="full">Note<input id="adjustNote" placeholder="Optional"></label>
             <button class="secondary full" type="submit">Apply Adjustment</button>
           </form>
+
+          <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+          <h3>Recipe / ingredient usage</h3>
+          <p class="ops-note">Choose a menu item and define how much of each ingredient one sale consumes. This powers automatic ingredient deduction and estimated COGS.</p>
+          <div class="ops-form">
+            <label class="full">Menu product<select id="recipeProduct"></select></label>
+          </div>
+          <div id="recipeRows" style="margin-top:10px"></div>
+          <div class="ops-actions" style="margin-top:10px">
+            <button id="recipeAddRow" type="button" class="secondary">+ Add Ingredient</button>
+            <button id="recipeSave" type="button" class="primary">Save Recipe</button>
+          </div>
+
         </article>
         <article class="ops-card"><h3>Ingredient stock</h3><div id="ingredientTable" class="ops-table"></div></article>
       </div>
