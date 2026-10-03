@@ -46,6 +46,14 @@ data class DiscountPreview(
     val total: Int
 )
 
+data class ReceiptBranding(
+    val storeName: String = "DailyDash",
+    val branchName: String = "DailyDash - Paombong",
+    val address: String = "Paombong, Bulacan",
+    val phone: String = "",
+    val footer: String = "Thank you for choosing DailyDash!"
+)
+
 data class ShiftInfo(
     val id: String,
     val openingCash: Int,
