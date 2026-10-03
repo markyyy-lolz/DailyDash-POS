@@ -12,13 +12,41 @@ data class Product(
     val imageUrl: String? = null
 )
 
+data class ModifierOption(
+    val id: String,
+    val productId: String,
+    val groupName: String,
+    val groupType: String,
+    val name: String,
+    val priceDelta: Int = 0,
+    val isDefault: Boolean = false,
+    val required: Boolean = false,
+    val maxSelect: Int = 1,
+    val sortOrder: Int = 0
+)
+
+data class SelectedModifier(
+    val option: ModifierOption,
+    val quantity: Int = 1
+) {
+    val lineDelta: Int get() = option.priceDelta * quantity
+}
+
 data class CartLine(
     val product: Product,
     val quantity: Int = 1,
-    val upsized: Boolean = false
+    val upsized: Boolean = false,
+    val modifiers: List<SelectedModifier> = emptyList()
 ) {
-    val unitPrice: Int get() = product.price + if (upsized) product.upsizePrice else 0
+    val modifierTotal: Int get() = modifiers.sumOf { it.lineDelta }
+    val unitPrice: Int get() =
+        product.price + (if (upsized) product.upsizePrice else 0) + modifierTotal
     val lineTotal: Int get() = unitPrice * quantity
+    val modifierLabel: String
+        get() = modifiers.joinToString(", ") {
+            if (it.quantity > 1) it.quantity.toString() + "× " + it.option.name
+            else it.option.name
+        }
 }
 
 data class StaffMember(
@@ -44,6 +72,26 @@ data class DiscountPreview(
     val label: String?,
     val discountTotal: Int,
     val total: Int
+)
+
+data class CustomerLoyalty(
+    val id: String,
+    val name: String,
+    val phone: String,
+    val pointsBalance: Int,
+    val lifetimePoints: Int = 0,
+    val lifetimeSpend: Int = 0,
+    val tier: String = "Member",
+    val birthday: String? = null
+)
+
+data class AppReleaseInfo(
+    val versionCode: Int,
+    val versionName: String,
+    val changelog: String,
+    val updateUrl: String?,
+    val required: Boolean,
+    val publishedAt: String
 )
 
 data class ReceiptBranding(
@@ -83,7 +131,12 @@ data class CloudOrderResult(
     val createdAt: String,
     val queueNo: Int = 0,
     val grossTotal: Int = total,
-    val discountTotal: Int = 0
+    val discountTotal: Int = 0,
+    val orderType: String = "Takeout",
+    val tableNo: String? = null,
+    val loyaltyRedeemed: Int = 0,
+    val loyaltyEarned: Int = 0,
+    val loyaltyBalance: Int = 0
 )
 
 data class CompletedSale(
@@ -98,6 +151,10 @@ data class PendingSale(
     val payments: List<PaymentPart>,
     val discountCode: String? = null,
     val customerName: String? = null,
+    val customerPhone: String? = null,
+    val redeemPoints: Int = 0,
+    val orderType: String = "Takeout",
+    val tableNo: String? = null,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
